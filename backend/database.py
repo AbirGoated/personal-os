@@ -35,13 +35,35 @@ CREATE TABLE IF NOT EXISTS tasks (
 )
 """)
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS checklist_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS checklist_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    completed_at TEXT,
+    FOREIGN KEY (item_id) REFERENCES checklist_items(id),
+    UNIQUE (item_id, date)
+)
+""")
+
 existing_task_columns = [row[1] for row in cursor.execute("PRAGMA table_info(tasks)")]
 if "completed_at" not in existing_task_columns:
     cursor.execute("ALTER TABLE tasks ADD COLUMN completed_at TEXT")
+
 for table in ("projects", "tasks"):
     existing_columns = [row[1] for row in cursor.execute(f"PRAGMA table_info({table})")]
     if "created_at" not in existing_columns:
         cursor.execute(f"ALTER TABLE {table} ADD COLUMN created_at TEXT")
+
 now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 for table in ("projects", "tasks"):
     cursor.execute(f"UPDATE {table} SET created_at = ? WHERE created_at IS NULL", (now,))
@@ -118,19 +140,11 @@ def complete_task(task_id):
         connection.close()
 
 def update_task(task_id, **fields):
-    """
-    Updates only the fields actually passed in.
-    Pass exactly the fields the caller sent (e.g. via `.model_dump(exclude_unset=True)`)
-    so that an explicit `None` (e.g. clearing project_id) is distinguishable from a
-    field that was never sent at all.
-    """
     if not fields:
         return 0
     if "completed" in fields:
         completed = fields["completed"]
         fields["completed"] = int(completed)
-        # completed_at is derived, not something the caller sets directly:
-        # ticking a task stamps "now", un-ticking clears it.
         fields["completed_at"] = _now() if completed else None
 
     connection = get_connection()
@@ -229,6 +243,108 @@ def delete_project(project_id):
     try:
         cursor = connection.cursor()
         cursor.execute("""DELETE FROM projects WHERE id = ?""", (project_id,))
+        connection.commit()
+        return cursor.rowcount
+    finally:
+        connection.close()
+
+
+def create_checklist_item(title):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "INSERT INTO checklist_items (title, active, created_at) VALUES (?, 1, ?)",
+            (title, _now())
+        )
+        connection.commit()
+        return cursor.lastrowid
+    finally:
+        connection.close()
+
+
+def get_checklist_items():
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "SELECT id, title, active, created_at FROM checklist_items WHERE active = 1 ORDER BY id"
+        )
+        rows = cursor.fetchall()
+        return [
+            {"id": row[0], "title": row[1], "active": bool(row[2]), "created_at": row[3]}
+            for row in rows
+        ]
+    finally:
+        connection.close()
+
+
+def delete_checklist_item(item_id):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "UPDATE checklist_items SET active = 0 WHERE id = ? AND active = 1",
+            (item_id,)
+        )
+        connection.commit()
+        return cursor.rowcount
+    finally:
+        connection.close()
+
+
+def get_checklist_today(date):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("""
+            SELECT checklist_items.id, checklist_items.title, checklist_log.completed_at
+            FROM checklist_items
+            LEFT JOIN checklist_log
+                ON checklist_log.item_id = checklist_items.id
+                AND checklist_log.date = ?
+            WHERE checklist_items.active = 1
+            ORDER BY checklist_items.id
+        """, (date,))
+        rows = cursor.fetchall()
+        return [
+            {"id": row[0], "title": row[1], "completed_at": row[2]}
+            for row in rows
+        ]
+    finally:
+        connection.close()
+
+
+def complete_checklist_item(item_id, date):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "SELECT id FROM checklist_items WHERE id = ? AND active = 1",
+            (item_id,)
+        )
+        if cursor.fetchone() is None:
+            return None
+        timestamp = _now()
+        cursor.execute("""
+            INSERT INTO checklist_log (item_id, date, completed_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(item_id, date) DO UPDATE SET completed_at = excluded.completed_at
+        """, (item_id, date, timestamp))
+        connection.commit()
+        return timestamp
+    finally:
+        connection.close()
+
+
+def uncomplete_checklist_item(item_id, date):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "DELETE FROM checklist_log WHERE item_id = ? AND date = ?",
+            (item_id, date)
+        )
         connection.commit()
         return cursor.rowcount
     finally:

@@ -1,16 +1,25 @@
 const API_BASE = "http://127.0.0.1:8000";
 
-
 let tasks = [];
 let projects = [];
+let checklistToday = [];
+let currentPage = "home";
 let currentView = "all";
-
 const el = {
+  navHome: document.querySelector('.nav-item[data-page="home"]'),
+  navTasks: document.querySelector('.nav-item[data-page="tasks"]'),
   allCount: document.getElementById("all-count"),
-  navAll: document.querySelector('.nav-item[data-view="all"]'),
   projectList: document.getElementById("project-list"),
   addProjectForm: document.getElementById("add-project-form"),
   newProjectInput: document.getElementById("new-project-input"),
+
+  pageHome: document.getElementById("page-home"),
+  pageTasks: document.getElementById("page-tasks"),
+  homeDate: document.getElementById("home-date"),
+  checklistItems: document.getElementById("checklist-items"),
+  checklistEmptyState: document.getElementById("checklist-empty-state"),
+  addChecklistForm: document.getElementById("add-checklist-form"),
+  newChecklistInput: document.getElementById("new-checklist-input"),
 
   viewTitle: document.getElementById("view-title"),
   viewCount: document.getElementById("view-count"),
@@ -78,8 +87,19 @@ const api = {
       body: JSON.stringify({ name }),
     }),
   deleteProject: (id) => apiRequest(`/projects/${id}`, { method: "DELETE" }),
-};
 
+  getChecklistToday: (date) => apiRequest(`/checklist/today?date=${date}`),
+  createChecklistItem: (title) =>
+    apiRequest("/checklist/items", {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    }),
+  deleteChecklistItem: (id) => apiRequest(`/checklist/items/${id}`, { method: "DELETE" }),
+  completeChecklistItem: (id, date) =>
+    apiRequest(`/checklist/today/${id}/complete?date=${date}`, { method: "POST" }),
+  uncompleteChecklistItem: (id, date) =>
+    apiRequest(`/checklist/today/${id}/complete?date=${date}`, { method: "DELETE" }),
+};
 
 function showError(message) {
   el.errorBanner.textContent = message;
@@ -89,6 +109,15 @@ function showError(message) {
 function clearError() {
   el.errorBanner.hidden = true;
   el.errorBanner.textContent = "";
+}
+
+
+function getLocalDateString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function formatCreatedAt(sqliteTimestamp) {
@@ -101,6 +130,14 @@ function formatCreatedAt(sqliteTimestamp) {
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
+  });
+}
+
+function formatTodayHeading() {
+  return new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
   });
 }
 
@@ -137,20 +174,27 @@ function createInfoIcon(lines) {
   return wrap;
 }
 
+// ============================================
+// Rendering
+// ============================================
 
 function renderSidebar() {
   el.allCount.textContent = tasks.length;
-  el.navAll.classList.toggle("is-active", currentView === "all");
+  el.navHome.classList.toggle("is-active", currentPage === "home");
+  el.navTasks.classList.toggle("is-active", currentPage === "tasks" && currentView === "all");
 
   el.projectList.innerHTML = "";
   projects.forEach((project) => {
     const li = document.createElement("li");
-    li.className = "project-item" + (currentView === project.id ? " is-active" : "");
+    li.className =
+      "project-item" +
+      (currentPage === "tasks" && currentView === project.id ? " is-active" : "");
 
     const btn = document.createElement("button");
     btn.className = "project-item-btn";
     btn.type = "button";
     btn.addEventListener("click", () => {
+      currentPage = "tasks";
       currentView = project.id;
       render();
     });
@@ -194,6 +238,46 @@ function renderSidebar() {
     el.newTaskProject.appendChild(option);
   });
   el.newTaskProject.value = previousValue;
+}
+
+function renderPages() {
+  el.pageHome.hidden = currentPage !== "home";
+  el.pageTasks.hidden = currentPage !== "tasks";
+}
+
+function renderHome() {
+  el.homeDate.textContent = formatTodayHeading();
+
+  el.checklistItems.innerHTML = "";
+  el.checklistEmptyState.hidden = checklistToday.length !== 0;
+
+  checklistToday.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "checklist-item" + (item.completed_at ? " is-completed" : "");
+
+    const checkbox = document.createElement("button");
+    checkbox.className = "task-checkbox";
+    checkbox.type = "button";
+    checkbox.setAttribute("aria-label", item.completed_at ? "Mark incomplete" : "Mark complete");
+    const mark = document.createElement("span");
+    mark.className = "task-checkbox-mark";
+    checkbox.appendChild(mark);
+    checkbox.addEventListener("click", () => handleToggleChecklistItem(item));
+
+    const title = document.createElement("span");
+    title.className = "checklist-item-title";
+    title.textContent = item.title;
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "task-delete";
+    deleteBtn.type = "button";
+    deleteBtn.setAttribute("aria-label", `Remove "${item.title}"`);
+    deleteBtn.innerHTML = "&times;";
+    deleteBtn.addEventListener("click", () => handleDeleteChecklistItem(item.id));
+
+    row.append(checkbox, title, deleteBtn);
+    el.checklistItems.appendChild(row);
+  });
 }
 
 function getVisibleTasks() {
@@ -301,7 +385,9 @@ function renderAddExisting() {
 }
 
 function render() {
+  renderPages();
   renderSidebar();
+  renderHome();
   renderTasks();
   renderAddExisting();
 }
@@ -309,9 +395,14 @@ function render() {
 
 async function loadAll() {
   try {
-    const [taskData, projectData] = await Promise.all([api.getTasks(), api.getProjects()]);
+    const [taskData, projectData, checklistData] = await Promise.all([
+      api.getTasks(),
+      api.getProjects(),
+      api.getChecklistToday(getLocalDateString()),
+    ]);
     tasks = taskData;
     projects = projectData;
+    checklistToday = checklistData;
     clearError();
     render();
   } catch (err) {
@@ -399,7 +490,6 @@ async function handleDeleteProject(id) {
     clearError();
     render();
   } catch (err) {
-
     showError(err.message);
   }
 }
@@ -412,14 +502,61 @@ async function refreshProjectCounts() {
   }
 }
 
+async function handleToggleChecklistItem(item) {
+  const date = getLocalDateString();
+  try {
+    const updated = item.completed_at
+      ? await api.uncompleteChecklistItem(item.id, date)
+      : await api.completeChecklistItem(item.id, date);
+    checklistToday = checklistToday.map((i) => (i.id === item.id ? updated : i));
+    clearError();
+    renderHome();
+  } catch (err) {
+    showError(err.message);
+  }
+}
 
-el.navAll.addEventListener("click", () => {
+async function handleAddChecklistItem(e) {
+  e.preventDefault();
+  const title = el.newChecklistInput.value.trim();
+  if (!title) return;
+
+  try {
+    await api.createChecklistItem(title);
+    el.newChecklistInput.value = "";
+    checklistToday = await api.getChecklistToday(getLocalDateString());
+    clearError();
+    renderHome();
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+async function handleDeleteChecklistItem(id) {
+  try {
+    await api.deleteChecklistItem(id);
+    checklistToday = checklistToday.filter((i) => i.id !== id);
+    clearError();
+    renderHome();
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+el.navHome.addEventListener("click", () => {
+  currentPage = "home";
+  render();
+});
+
+el.navTasks.addEventListener("click", () => {
+  currentPage = "tasks";
   currentView = "all";
   render();
 });
 
 el.addTaskForm.addEventListener("submit", handleAddTask);
 el.addProjectForm.addEventListener("submit", handleAddProject);
+el.addChecklistForm.addEventListener("submit", handleAddChecklistItem);
 
 el.addExistingSelect.addEventListener("change", () => {
   const taskId = Number(el.addExistingSelect.value);

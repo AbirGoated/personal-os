@@ -17,8 +17,11 @@
       </div>
 
       <nav class="nav">
-        <button class="nav-item is-active" data-view="all">
-          <span class="nav-item-label">All tasks</span>
+        <button class="nav-item is-active" data-page="home">
+          <span class="nav-item-label">Home</span>
+        </button>
+        <button class="nav-item" data-page="tasks">
+          <span class="nav-item-label">Tasks</span>
           <span class="nav-item-count" id="all-count">0</span>
         </button>
       </nav>
@@ -26,7 +29,6 @@
       <div class="sidebar-section">
         <span class="sidebar-section-label">Projects</span>
         <ul class="project-list" id="project-list">
-
         </ul>
 
         <form class="add-project-form" id="add-project-form">
@@ -42,41 +44,71 @@
       </div>
     </aside>
 
+    <!-- Main -->
     <main class="main">
-      <header class="main-header">
-        <h1 class="view-title" id="view-title">All tasks</h1>
-        <span class="view-count" id="view-count">0 tasks</span>
-      </header>
-
-      <form class="add-task-form" id="add-task-form">
-        <input
-          type="text"
-          id="new-task-input"
-          class="add-task-input"
-          placeholder="Add a task…"
-          autocomplete="off"
-          maxlength="200"
-        />
-        <select id="new-task-project" class="add-task-project" aria-label="Assign to project">
-          <option value="">No project</option>
-        </select>
-      </form>
-
-      <div class="add-existing-wrap" id="add-existing-wrap" hidden>
-        <select id="add-existing-select" class="add-existing-select" aria-label="Add an existing task to this project">
-          <option value="">Add existing task…</option>
-        </select>
-      </div>
-
-      <div class="task-list" id="task-list">
-
-      </div>
-
-      <p class="empty-state" id="empty-state" hidden>
-        Nothing here yet. Add a task above to get started.
-      </p>
-
       <p class="error-banner" id="error-banner" hidden></p>
+
+      <div class="page" id="page-home">
+        <header class="main-header">
+          <h1 class="view-title">Home</h1>
+          <span class="view-count" id="home-date"></span>
+        </header>
+
+        <div class="home-grid" id="home-grid">
+          <section class="home-card">
+            <h2 class="home-card-title">Daily Checklist</h2>
+            <div class="checklist-items" id="checklist-items"></div>
+            <form class="add-checklist-form" id="add-checklist-form">
+              <input
+                type="text"
+                id="new-checklist-input"
+                class="add-checklist-input"
+                placeholder="+ Add item"
+                autocomplete="off"
+                maxlength="120"
+              />
+            </form>
+            <p class="empty-state" id="checklist-empty-state" hidden>
+              Nothing on your daily checklist yet.
+            </p>
+          </section>
+        </div>
+      </div>
+
+      <div class="page" id="page-tasks" hidden>
+        <header class="main-header">
+          <h1 class="view-title" id="view-title">All tasks</h1>
+          <span class="view-count" id="view-count">0 tasks</span>
+        </header>
+
+        <form class="add-task-form" id="add-task-form">
+          <input
+            type="text"
+            id="new-task-input"
+            class="add-task-input"
+            placeholder="Add a task…"
+            autocomplete="off"
+            maxlength="200"
+          />
+          <select id="new-task-project" class="add-task-project" aria-label="Assign to project">
+            <option value="">No project</option>
+          </select>
+        </form>
+
+        <div class="add-existing-wrap" id="add-existing-wrap" hidden>
+          <select id="add-existing-select" class="add-existing-select" aria-label="Add an existing task to this project">
+            <option value="">Add existing task…</option>
+          </select>
+        </div>
+
+        <div class="task-list" id="task-list">
+          <!-- task rows injected here -->
+        </div>
+
+        <p class="empty-state" id="empty-state" hidden>
+          Nothing here yet. Add a task above to get started.
+        </p>
+      </div>
     </main>
 
   </div>
