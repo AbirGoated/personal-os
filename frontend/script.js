@@ -3,8 +3,11 @@ const API_BASE = "http://127.0.0.1:8000";
 let tasks = [];
 let projects = [];
 let checklistToday = [];
+let workoutWeek = [];
 let currentPage = "home";
 let currentView = "all";
+
+
 const el = {
   navHome: document.querySelector('.nav-item[data-page="home"]'),
   navTasks: document.querySelector('.nav-item[data-page="tasks"]'),
@@ -20,6 +23,9 @@ const el = {
   checklistEmptyState: document.getElementById("checklist-empty-state"),
   addChecklistForm: document.getElementById("add-checklist-form"),
   newChecklistInput: document.getElementById("new-checklist-input"),
+  weekList: document.getElementById("week-list"),
+  workoutToday: document.getElementById("workout-today"),
+  workoutEmptyState: document.getElementById("workout-empty-state"),
 
   viewTitle: document.getElementById("view-title"),
   viewCount: document.getElementById("view-count"),
@@ -99,6 +105,14 @@ const api = {
     apiRequest(`/checklist/today/${id}/complete?date=${date}`, { method: "POST" }),
   uncompleteChecklistItem: (id, date) =>
     apiRequest(`/checklist/today/${id}/complete?date=${date}`, { method: "DELETE" }),
+
+  getWorkoutWeek: (today) => apiRequest(`/workouts/week?today=${today}`),
+  completeWorkout: (planId, date, today) =>
+    apiRequest(`/workouts/log/${planId}/complete?date=${date}&today=${today}`, { method: "POST" }),
+  skipWorkout: (planId, date, today) =>
+    apiRequest(`/workouts/log/${planId}/skip?date=${date}&today=${today}`, { method: "POST" }),
+  resetWorkout: (planId, date, today) =>
+    apiRequest(`/workouts/log/${planId}?date=${date}&today=${today}`, { method: "DELETE" }),
 };
 
 function showError(message) {
@@ -111,6 +125,9 @@ function clearError() {
   el.errorBanner.textContent = "";
 }
 
+// ============================================
+// Helpers
+// ============================================
 
 function getLocalDateString() {
   const now = new Date();
@@ -139,6 +156,15 @@ function formatTodayHeading() {
     month: "long",
     day: "numeric",
   });
+}
+
+const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function aggregateDayStatus(day) {
+  if (day.entries.length === 0) return "rest";
+  if (day.entries.every((e) => e.status === "completed")) return "completed";
+  if (day.entries.some((e) => e.status === "missed")) return "missed";
+  return "pending";
 }
 
 function createInfoIcon(lines) {
@@ -173,10 +199,6 @@ function createInfoIcon(lines) {
   wrap.append(button, tooltip);
   return wrap;
 }
-
-// ============================================
-// Rendering
-// ============================================
 
 function renderSidebar() {
   el.allCount.textContent = tasks.length;
@@ -391,7 +413,6 @@ function render() {
   renderTasks();
   renderAddExisting();
 }
-
 
 async function loadAll() {
   try {

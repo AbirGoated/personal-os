@@ -1,7 +1,3 @@
-/* ============================================
-   Design tokens
-   ============================================ */
-
 :root {
   --background: #0a0a0b;
   --surface: #141416;
@@ -21,10 +17,6 @@
   --radius: 6px;
   --transition: 150ms ease;
 }
-
-/* ============================================
-   Reset & base
-   ============================================ */
 
 * {
   box-sizing: border-box;
@@ -82,7 +74,6 @@ ul {
   }
 }
 
-/* thin, quiet scrollbars */
 ::-webkit-scrollbar {
   width: 10px;
 }
@@ -95,19 +86,11 @@ ul {
   border: 3px solid var(--background);
 }
 
-/* ============================================
-   App shell
-   ============================================ */
-
 .app {
   display: flex;
   height: 100vh;
   overflow: hidden;
 }
-
-/* ============================================
-   Sidebar
-   ============================================ */
 
 .sidebar {
   width: var(--sidebar-width);
@@ -303,10 +286,6 @@ ul {
   outline: none;
 }
 
-/* ============================================
-   Main
-   ============================================ */
-
 .main {
   flex: 1;
   display: flex;
@@ -335,10 +314,6 @@ ul {
   font-size: 13px;
   color: var(--text-muted);
 }
-
-/* ============================================
-   Add task form
-   ============================================ */
 
 .add-task-form {
   display: flex;
@@ -387,10 +362,6 @@ ul {
   border-color: var(--accent);
 }
 
-/* ============================================
-   Task list
-   ============================================ */
-
 .task-list {
   max-width: 640px;
   border-top: 1px solid var(--border);
@@ -426,7 +397,8 @@ ul {
   border-color: var(--text-muted);
 }
 
-.task-row.is-completed .task-checkbox {
+.task-row.is-completed .task-checkbox,
+.checklist-item.is-completed .task-checkbox {
   background: var(--accent);
   border-color: var(--accent);
 }
@@ -439,7 +411,8 @@ ul {
   opacity: 0;
 }
 
-.task-row.is-completed .task-checkbox-mark {
+.task-row.is-completed .task-checkbox-mark,
+.checklist-item.is-completed .task-checkbox-mark {
   opacity: 1;
 }
 
@@ -539,9 +512,6 @@ ul {
   color: var(--danger);
 }
 
-/* ============================================
-   Info icon + glassmorphism tooltip
-   ============================================ */
 
 .info-icon-wrap {
   position: relative;
@@ -568,7 +538,6 @@ ul {
   color: var(--text);
 }
 
-/* task rows: icon sits inline, revealed on row hover alongside the delete button */
 .task-row .info-icon-wrap {
   opacity: 0;
   transition: opacity var(--transition);
@@ -613,10 +582,6 @@ ul {
   visibility: visible;
   transform: translateY(0);
 }
-
-/* ============================================
-   Empty state & errors
-   ============================================ */
 
 .empty-state {
   max-width: 640px;

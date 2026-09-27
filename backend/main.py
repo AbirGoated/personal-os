@@ -7,6 +7,8 @@ from backend.database import (
     get_projects, get_project, create_project, update_project, delete_project,
     create_checklist_item, get_checklist_items, delete_checklist_item,
     get_checklist_today, complete_checklist_item, uncomplete_checklist_item,
+    create_workout_plan, get_workout_plan, delete_workout_plan,
+    get_workout_week, get_workout_entry, log_workout, clear_workout_log,
 )
 
 app = FastAPI()
@@ -62,6 +64,26 @@ class ChecklistTodayOut(BaseModel):
     id: int
     title: str
     completed_at: str | None = None
+
+class WorkoutPlanIn(BaseModel):
+    day_of_week: int
+    workout_name: str
+
+class WorkoutPlanOut(BaseModel):
+    id: int
+    day_of_week: int
+    workout_name: str
+    created_at: str
+
+class WorkoutEntryOut(BaseModel):
+    plan_id: int
+    workout_name: str
+    status: str
+
+class WorkoutDayOut(BaseModel):
+    date: str
+    day_of_week: int
+    entries: list[WorkoutEntryOut]
 
 
 @app.get("/tasks", response_model=list[TaskOut])
@@ -187,3 +209,57 @@ def uncomplete_checklist_today(item_id: int, date: str = Query(...)):
         if entry["id"] == item_id:
             return entry
     raise HTTPException(status_code=404, detail="Checklist item not found")
+
+
+@app.get("/workouts/plan", response_model=list[WorkoutPlanOut])
+def read_workout_plan():
+    return get_workout_plan()
+
+@app.post("/workouts/plan", response_model=WorkoutPlanOut)
+def create_new_workout_plan(plan: WorkoutPlanIn):
+    if not 0 <= plan.day_of_week <= 6:
+        raise HTTPException(status_code=400, detail="day_of_week must be 0 (Monday) through 6 (Sunday)")
+    plan_id = create_workout_plan(plan.day_of_week, plan.workout_name)
+    for entry in get_workout_plan():
+        if entry["id"] == plan_id:
+            return entry
+    raise HTTPException(status_code=500, detail="Failed to create workout plan entry")
+
+@app.delete("/workouts/plan/{plan_id}")
+def remove_workout_plan(plan_id: int):
+    try:
+        rows_deleted = delete_workout_plan(plan_id)
+    except sqlite3.IntegrityError:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete a workout plan entry with logged history. Remove its log entries first."
+        )
+    if rows_deleted == 0:
+        raise HTTPException(status_code=404, detail="Workout plan entry not found")
+    return {"message": "Workout plan entry deleted"}
+
+@app.get("/workouts/week", response_model=list[WorkoutDayOut])
+def read_workout_week(today: str = Query(...)):
+    return get_workout_week(today)
+
+@app.post("/workouts/log/{plan_id}/complete", response_model=WorkoutEntryOut)
+def complete_workout(plan_id: int, date: str = Query(...), today: str = Query(...)):
+    ok = log_workout(plan_id, date, "completed")
+    if not ok:
+        raise HTTPException(status_code=404, detail="Workout plan entry not found")
+    return get_workout_entry(plan_id, date, today)
+
+@app.post("/workouts/log/{plan_id}/skip", response_model=WorkoutEntryOut)
+def skip_workout(plan_id: int, date: str = Query(...), today: str = Query(...)):
+    ok = log_workout(plan_id, date, "missed")
+    if not ok:
+        raise HTTPException(status_code=404, detail="Workout plan entry not found")
+    return get_workout_entry(plan_id, date, today)
+
+@app.delete("/workouts/log/{plan_id}", response_model=WorkoutEntryOut)
+def reset_workout(plan_id: int, date: str = Query(...), today: str = Query(...)):
+    clear_workout_log(plan_id, date)
+    entry = get_workout_entry(plan_id, date, today)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Workout plan entry not found")
+    return entry

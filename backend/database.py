@@ -1,6 +1,6 @@
 import sqlite3
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tasks.db")
 
@@ -52,6 +52,27 @@ CREATE TABLE IF NOT EXISTS checklist_log (
     completed_at TEXT,
     FOREIGN KEY (item_id) REFERENCES checklist_items(id),
     UNIQUE (item_id, date)
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS workout_plan (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    day_of_week INTEGER NOT NULL,
+    workout_name TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS workout_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workout_plan_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    status TEXT NOT NULL,
+    logged_at TEXT,
+    FOREIGN KEY (workout_plan_id) REFERENCES workout_plan(id),
+    UNIQUE (workout_plan_id, date)
 )
 """)
 
@@ -145,6 +166,8 @@ def update_task(task_id, **fields):
     if "completed" in fields:
         completed = fields["completed"]
         fields["completed"] = int(completed)
+        # completed_at is derived, not something the caller sets directly:
+        # ticking a task stamps "now", un-ticking clears it.
         fields["completed_at"] = _now() if completed else None
 
     connection = get_connection()
@@ -344,6 +367,137 @@ def uncomplete_checklist_item(item_id, date):
         cursor.execute(
             "DELETE FROM checklist_log WHERE item_id = ? AND date = ?",
             (item_id, date)
+        )
+        connection.commit()
+        return cursor.rowcount
+    finally:
+        connection.close()
+
+
+def create_workout_plan(day_of_week, workout_name):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "INSERT INTO workout_plan (day_of_week, workout_name, created_at) VALUES (?, ?, ?)",
+            (day_of_week, workout_name, _now())
+        )
+        connection.commit()
+        return cursor.lastrowid
+    finally:
+        connection.close()
+
+
+def get_workout_plan():
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "SELECT id, day_of_week, workout_name, created_at FROM workout_plan ORDER BY day_of_week, id"
+        )
+        rows = cursor.fetchall()
+        return [
+            {"id": row[0], "day_of_week": row[1], "workout_name": row[2], "created_at": row[3]}
+            for row in rows
+        ]
+    finally:
+        connection.close()
+
+
+def delete_workout_plan(plan_id):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("DELETE FROM workout_plan WHERE id = ?", (plan_id,))
+        connection.commit()
+        return cursor.rowcount
+    finally:
+        connection.close()
+
+
+def _workout_status(plan_id, date_str, today_str, cursor):
+    cursor.execute(
+        "SELECT status FROM workout_log WHERE workout_plan_id = ? AND date = ?",
+        (plan_id, date_str)
+    )
+    row = cursor.fetchone()
+    if row is not None:
+        return row[0]
+    if date_str < today_str:
+        return "missed"
+    return "pending"
+
+
+def get_workout_week(today_str):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT id, day_of_week, workout_name FROM workout_plan ORDER BY day_of_week, id")
+        plan_rows = cursor.fetchall()
+
+        today = date.fromisoformat(today_str)
+        week_start = today - timedelta(days=today.weekday())
+
+        days = []
+        for offset in range(7):
+            day_date = week_start + timedelta(days=offset)
+            day_date_str = day_date.isoformat()
+            entries = []
+            for plan_id, day_of_week, workout_name in plan_rows:
+                if day_of_week != offset:
+                    continue
+                status = _workout_status(plan_id, day_date_str, today_str, cursor)
+                entries.append({"plan_id": plan_id, "workout_name": workout_name, "status": status})
+            days.append({"date": day_date_str, "day_of_week": offset, "entries": entries})
+        return days
+    finally:
+        connection.close()
+
+
+def get_workout_entry(plan_id, date_str, today_str):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "SELECT workout_name FROM workout_plan WHERE id = ?",
+            (plan_id,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        status = _workout_status(plan_id, date_str, today_str, cursor)
+        return {"plan_id": plan_id, "workout_name": row[0], "status": status}
+    finally:
+        connection.close()
+
+
+def log_workout(plan_id, date_str, status):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT id FROM workout_plan WHERE id = ?", (plan_id,))
+        if cursor.fetchone() is None:
+            return False
+        cursor.execute("""
+            INSERT INTO workout_log (workout_plan_id, date, status, logged_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(workout_plan_id, date) DO UPDATE SET
+                status = excluded.status,
+                logged_at = excluded.logged_at
+        """, (plan_id, date_str, status, _now()))
+        connection.commit()
+        return True
+    finally:
+        connection.close()
+
+
+def clear_workout_log(plan_id, date_str):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute(
+            "DELETE FROM workout_log WHERE workout_plan_id = ? AND date = ?",
+            (plan_id, date_str)
         )
         connection.commit()
         return cursor.rowcount

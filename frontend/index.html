@@ -9,8 +9,6 @@
 <body>
 
   <div class="app">
-
-    <!-- Sidebar -->
     <aside class="sidebar">
       <div class="sidebar-header">
         <span class="sidebar-title">Personal API</span>
@@ -29,6 +27,7 @@
       <div class="sidebar-section">
         <span class="sidebar-section-label">Projects</span>
         <ul class="project-list" id="project-list">
+
         </ul>
 
         <form class="add-project-form" id="add-project-form">
@@ -72,6 +71,19 @@
               Nothing on your daily checklist yet.
             </p>
           </section>
+
+          <section class="home-card">
+            <h2 class="home-card-title">This Week</h2>
+            <div class="week-list" id="week-list"></div>
+          </section>
+
+          <section class="home-card">
+            <h2 class="home-card-title">Today's Workout</h2>
+            <div class="workout-today" id="workout-today"></div>
+            <p class="empty-state" id="workout-empty-state" hidden>
+              No workout scheduled today.
+            </p>
+          </section>
         </div>
       </div>
 
@@ -102,7 +114,7 @@
         </div>
 
         <div class="task-list" id="task-list">
-          <!-- task rows injected here -->
+
         </div>
 
         <p class="empty-state" id="empty-state" hidden>
