@@ -1,9 +1,9 @@
 const API_BASE = "http://127.0.0.1:8000";
 
+
 let tasks = [];
 let projects = [];
 let currentView = "all";
-
 
 const el = {
   allCount: document.getElementById("all-count"),
@@ -104,14 +104,16 @@ function formatCreatedAt(sqliteTimestamp) {
   });
 }
 
-function createInfoIcon(label) {
+function createInfoIcon(lines) {
+  const lineList = Array.isArray(lines) ? lines : [lines];
+
   const wrap = document.createElement("span");
   wrap.className = "info-icon-wrap";
 
   const button = document.createElement("button");
   button.type = "button";
   button.className = "info-icon";
-  button.setAttribute("aria-label", label);
+  button.setAttribute("aria-label", lineList.join(" — "));
   button.innerHTML =
     '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">' +
     '<circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/>' +
@@ -122,8 +124,14 @@ function createInfoIcon(label) {
 
   const tooltip = document.createElement("span");
   tooltip.className = "info-tooltip";
-  tooltip.textContent = label;
   tooltip.setAttribute("role", "tooltip");
+
+  lineList.forEach((line) => {
+    const lineEl = document.createElement("span");
+    lineEl.className = "info-tooltip-line";
+    lineEl.textContent = line;
+    tooltip.appendChild(lineEl);
+  });
 
   wrap.append(button, tooltip);
   return wrap;
@@ -226,7 +234,10 @@ function renderTasks() {
 
     row.append(checkbox, title);
 
-    const infoIcon = createInfoIcon(`Created ${formatCreatedAt(task.created_at)}`);
+    const infoIcon = createInfoIcon([
+      `Created ${formatCreatedAt(task.created_at)}`,
+      task.completed ? `Completed ${formatCreatedAt(task.completed_at)}` : "Incomplete",
+    ]);
     row.appendChild(infoIcon);
 
     const projectSelect = document.createElement("select");
@@ -294,6 +305,7 @@ function render() {
   renderTasks();
   renderAddExisting();
 }
+
 
 async function loadAll() {
   try {
@@ -387,6 +399,7 @@ async function handleDeleteProject(id) {
     clearError();
     render();
   } catch (err) {
+
     showError(err.message);
   }
 }

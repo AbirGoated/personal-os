@@ -30,15 +30,18 @@ CREATE TABLE IF NOT EXISTS tasks (
     completed INTEGER DEFAULT 0,
     project_id INTEGER,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
     FOREIGN KEY (project_id) REFERENCES projects(id)
 )
 """)
 
+existing_task_columns = [row[1] for row in cursor.execute("PRAGMA table_info(tasks)")]
+if "completed_at" not in existing_task_columns:
+    cursor.execute("ALTER TABLE tasks ADD COLUMN completed_at TEXT")
 for table in ("projects", "tasks"):
     existing_columns = [row[1] for row in cursor.execute(f"PRAGMA table_info({table})")]
     if "created_at" not in existing_columns:
         cursor.execute(f"ALTER TABLE {table} ADD COLUMN created_at TEXT")
-
 now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 for table in ("projects", "tasks"):
     cursor.execute(f"UPDATE {table} SET created_at = ? WHERE created_at IS NULL", (now,))
@@ -67,7 +70,7 @@ def get_tasks():
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        cursor.execute("""SELECT tasks.id, tasks.title, tasks.completed, tasks.project_id, projects.name, tasks.created_at FROM tasks LEFT JOIN projects ON tasks.project_id = projects.id ORDER BY tasks.id DESC""")
+        cursor.execute("""SELECT tasks.id, tasks.title, tasks.completed, tasks.project_id, projects.name, tasks.created_at, tasks.completed_at FROM tasks LEFT JOIN projects ON tasks.project_id = projects.id ORDER BY tasks.id DESC""")
         rows = cursor.fetchall()
         return [
             {
@@ -77,6 +80,7 @@ def get_tasks():
                 "project_id": row[3],
                 "project_name": row[4],
                 "created_at": row[5],
+                "completed_at": row[6],
             }
             for row in rows
         ]
@@ -87,7 +91,7 @@ def get_task(task_id):
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        cursor.execute("""SELECT tasks.id, tasks.title, tasks.completed, tasks.project_id, projects.name, tasks.created_at FROM tasks LEFT JOIN projects ON tasks.project_id = projects.id WHERE tasks.id = ?""", (task_id,))
+        cursor.execute("""SELECT tasks.id, tasks.title, tasks.completed, tasks.project_id, projects.name, tasks.created_at, tasks.completed_at FROM tasks LEFT JOIN projects ON tasks.project_id = projects.id WHERE tasks.id = ?""", (task_id,))
         row = cursor.fetchone()
         if row is None:
             return None
@@ -98,6 +102,7 @@ def get_task(task_id):
             "project_id": row[3],
             "project_name": row[4],
             "created_at": row[5],
+            "completed_at": row[6],
         }
     finally:
         connection.close()
@@ -113,10 +118,20 @@ def complete_task(task_id):
         connection.close()
 
 def update_task(task_id, **fields):
+    """
+    Updates only the fields actually passed in.
+    Pass exactly the fields the caller sent (e.g. via `.model_dump(exclude_unset=True)`)
+    so that an explicit `None` (e.g. clearing project_id) is distinguishable from a
+    field that was never sent at all.
+    """
     if not fields:
         return 0
     if "completed" in fields:
-        fields["completed"] = int(fields["completed"])
+        completed = fields["completed"]
+        fields["completed"] = int(completed)
+        # completed_at is derived, not something the caller sets directly:
+        # ticking a task stamps "now", un-ticking clears it.
+        fields["completed_at"] = _now() if completed else None
 
     connection = get_connection()
     try:

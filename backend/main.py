@@ -33,6 +33,7 @@ class TaskOut(BaseModel):
     project_id: int | None = None
     project_name: str | None = None
     created_at: str
+    completed_at: str | None = None
 
 class Project(BaseModel):
     name: str
