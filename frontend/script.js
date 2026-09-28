@@ -1,12 +1,24 @@
+// ============================================
+// Config
+// ============================================
+
 const API_BASE = "http://127.0.0.1:8000";
+
+// ============================================
+// State
+// ============================================
 
 let tasks = [];
 let projects = [];
 let checklistToday = [];
 let workoutWeek = [];
-let currentPage = "home";
-let currentView = "all";
+let loadedDate = null;
+let currentPage = "home"; // "home" | "tasks"
+let currentView = "all"; // "all" | project id (number)
 
+// ============================================
+// DOM refs
+// ============================================
 
 const el = {
   navHome: document.querySelector('.nav-item[data-page="home"]'),
@@ -39,6 +51,9 @@ const el = {
   errorBanner: document.getElementById("error-banner"),
 };
 
+// ============================================
+// API helpers
+// ============================================
 
 async function apiRequest(path, options = {}) {
   let response;
@@ -57,7 +72,7 @@ async function apiRequest(path, options = {}) {
       const body = await response.json();
       if (body.detail) detail = body.detail;
     } catch (_) {
-
+      /* no JSON body */
     }
     throw new Error(detail);
   }
@@ -114,6 +129,10 @@ const api = {
   resetWorkout: (planId, date, today) =>
     apiRequest(`/workouts/log/${planId}?date=${date}&today=${today}`, { method: "DELETE" }),
 };
+
+// ============================================
+// Error banner
+// ============================================
 
 function showError(message) {
   el.errorBanner.textContent = message;
@@ -199,6 +218,10 @@ function createInfoIcon(lines) {
   wrap.append(button, tooltip);
   return wrap;
 }
+
+// ============================================
+// Rendering
+// ============================================
 
 function renderSidebar() {
   el.allCount.textContent = tasks.length;
@@ -299,6 +322,89 @@ function renderHome() {
 
     row.append(checkbox, title, deleteBtn);
     el.checklistItems.appendChild(row);
+  });
+
+  renderWeek();
+  renderWorkoutToday();
+}
+
+const CHECK_SVG =
+  '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+  '<path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' +
+  "</svg>";
+
+const CROSS_SVG =
+  '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+  '<path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' +
+  "</svg>";
+
+function renderWeek() {
+  const todayStr = getLocalDateString();
+  el.weekList.innerHTML = "";
+
+  workoutWeek.forEach((day) => {
+    const status = aggregateDayStatus(day);
+
+    const row = document.createElement("div");
+    row.className = "week-row" + (day.date === todayStr ? " is-today" : "");
+
+    const dayName = document.createElement("span");
+    dayName.className = "week-row-day";
+    dayName.textContent = DAY_NAMES[day.day_of_week];
+
+    const workout = document.createElement("span");
+    workout.className = "week-row-workout";
+    workout.textContent =
+      day.entries.length === 0 ? "Rest" : day.entries.map((e) => e.workout_name).join(" · ");
+
+    const mark = document.createElement("span");
+    mark.className = `week-row-mark is-${status}`;
+    mark.setAttribute("aria-label", status);
+    if (status === "completed") mark.innerHTML = CHECK_SVG;
+    else if (status === "missed") mark.innerHTML = CROSS_SVG;
+    else mark.textContent = "–";
+
+    row.append(dayName, workout, mark);
+    el.weekList.appendChild(row);
+  });
+}
+
+function renderWorkoutToday() {
+  const todayStr = getLocalDateString();
+  const todayDay = workoutWeek.find((d) => d.date === todayStr);
+  const entries = todayDay ? todayDay.entries : [];
+
+  el.workoutToday.innerHTML = "";
+  el.workoutEmptyState.hidden = entries.length !== 0;
+
+  entries.forEach((entry) => {
+    const wrap = document.createElement("div");
+    wrap.className = "workout-entry";
+
+    const name = document.createElement("span");
+    name.className = "workout-entry-name";
+    name.textContent = entry.workout_name;
+
+    const actions = document.createElement("div");
+    actions.className = "workout-actions";
+
+    const doneBtn = document.createElement("button");
+    doneBtn.type = "button";
+    doneBtn.className = "workout-btn workout-btn-done" + (entry.status === "completed" ? " is-active" : "");
+    doneBtn.setAttribute("aria-label", "Mark workout done");
+    doneBtn.innerHTML = CHECK_SVG;
+    doneBtn.addEventListener("click", () => handleWorkoutAction(entry, "done"));
+
+    const skipBtn = document.createElement("button");
+    skipBtn.type = "button";
+    skipBtn.className = "workout-btn workout-btn-skip" + (entry.status === "missed" ? " is-active" : "");
+    skipBtn.setAttribute("aria-label", "Mark workout skipped");
+    skipBtn.innerHTML = CROSS_SVG;
+    skipBtn.addEventListener("click", () => handleWorkoutAction(entry, "skip"));
+
+    actions.append(doneBtn, skipBtn);
+    wrap.append(name, actions);
+    el.workoutToday.appendChild(wrap);
   });
 }
 
@@ -414,16 +520,24 @@ function render() {
   renderAddExisting();
 }
 
+// ============================================
+// Actions
+// ============================================
+
 async function loadAll() {
   try {
-    const [taskData, projectData, checklistData] = await Promise.all([
+    const today = getLocalDateString();
+    const [taskData, projectData, checklistData, weekData] = await Promise.all([
       api.getTasks(),
       api.getProjects(),
-      api.getChecklistToday(getLocalDateString()),
+      api.getChecklistToday(today),
+      api.getWorkoutWeek(today),
     ]);
     tasks = taskData;
     projects = projectData;
     checklistToday = checklistData;
+    workoutWeek = weekData;
+    loadedDate = today;
     clearError();
     render();
   } catch (err) {
@@ -519,7 +633,7 @@ async function refreshProjectCounts() {
   try {
     projects = await api.getProjects();
   } catch (err) {
-
+    /* non-fatal */
   }
 }
 
@@ -564,6 +678,28 @@ async function handleDeleteChecklistItem(id) {
   }
 }
 
+async function handleWorkoutAction(entry, action) {
+  const today = getLocalDateString();
+  try {
+    if (action === "done") {
+      if (entry.status === "completed") await api.resetWorkout(entry.plan_id, today, today);
+      else await api.completeWorkout(entry.plan_id, today, today);
+    } else {
+      if (entry.status === "missed") await api.resetWorkout(entry.plan_id, today, today);
+      else await api.skipWorkout(entry.plan_id, today, today);
+    }
+    workoutWeek = await api.getWorkoutWeek(today);
+    clearError();
+    renderHome();
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+// ============================================
+// Event wiring
+// ============================================
+
 el.navHome.addEventListener("click", () => {
   currentPage = "home";
   render();
@@ -585,5 +721,14 @@ el.addExistingSelect.addEventListener("change", () => {
   handleReassignTask(taskId, currentView);
 });
 
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && loadedDate && getLocalDateString() !== loadedDate) {
+    loadAll();
+  }
+});
+
+// ============================================
+// Init
+// ============================================
 
 loadAll();

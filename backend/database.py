@@ -76,15 +76,29 @@ CREATE TABLE IF NOT EXISTS workout_log (
 )
 """)
 
+# Migration: existing databases won't have completed_at yet.
 existing_task_columns = [row[1] for row in cursor.execute("PRAGMA table_info(tasks)")]
 if "completed_at" not in existing_task_columns:
     cursor.execute("ALTER TABLE tasks ADD COLUMN completed_at TEXT")
+    # Best effort only: we can't know exactly when an already-completed task
+    # was actually completed, since that moment wasn't recorded before now.
+    # Leaving it NULL for existing completed tasks is more honest than
+    # guessing a timestamp.
 
+# Migration: existing databases created before created_at existed won't have
+# the column. SQLite can't ADD COLUMN with a non-constant default, so we add
+# it as nullable here...
 for table in ("projects", "tasks"):
     existing_columns = [row[1] for row in cursor.execute(f"PRAGMA table_info({table})")]
     if "created_at" not in existing_columns:
         cursor.execute(f"ALTER TABLE {table} ADD COLUMN created_at TEXT")
 
+# ...then backfill any NULL created_at, every startup (not just once at
+# migration time). A column added via ALTER TABLE has no working default in
+# SQLite, so anything inserted without an explicit created_at (e.g. an older
+# version of create_task/create_project) would otherwise stay NULL forever.
+# create_task/create_project below now always pass created_at explicitly,
+# so this becomes a no-op once your data is caught up — safe to run always.
 now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 for table in ("projects", "tasks"):
     cursor.execute(f"UPDATE {table} SET created_at = ? WHERE created_at IS NULL", (now,))
@@ -161,6 +175,12 @@ def complete_task(task_id):
         connection.close()
 
 def update_task(task_id, **fields):
+    """
+    Updates only the fields actually passed in.
+    Pass exactly the fields the caller sent (e.g. via `.model_dump(exclude_unset=True)`)
+    so that an explicit `None` (e.g. clearing project_id) is distinguishable from a
+    field that was never sent at all.
+    """
     if not fields:
         return 0
     if "completed" in fields:
@@ -372,7 +392,6 @@ def uncomplete_checklist_item(item_id, date):
         return cursor.rowcount
     finally:
         connection.close()
-
 
 def create_workout_plan(day_of_week, workout_name):
     connection = get_connection()

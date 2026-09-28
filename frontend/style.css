@@ -1,3 +1,7 @@
+/* ============================================
+   Design tokens
+   ============================================ */
+
 :root {
   --background: #0a0a0b;
   --surface: #141416;
@@ -17,6 +21,10 @@
   --radius: 6px;
   --transition: 150ms ease;
 }
+
+/* ============================================
+   Reset & base
+   ============================================ */
 
 * {
   box-sizing: border-box;
@@ -74,6 +82,7 @@ ul {
   }
 }
 
+/* thin, quiet scrollbars */
 ::-webkit-scrollbar {
   width: 10px;
 }
@@ -86,11 +95,19 @@ ul {
   border: 3px solid var(--background);
 }
 
+/* ============================================
+   App shell
+   ============================================ */
+
 .app {
   display: flex;
   height: 100vh;
   overflow: hidden;
 }
+
+/* ============================================
+   Sidebar
+   ============================================ */
 
 .sidebar {
   width: var(--sidebar-width);
@@ -286,6 +303,10 @@ ul {
   outline: none;
 }
 
+/* ============================================
+   Main
+   ============================================ */
+
 .main {
   flex: 1;
   display: flex;
@@ -314,6 +335,10 @@ ul {
   font-size: 13px;
   color: var(--text-muted);
 }
+
+/* ============================================
+   Add task form
+   ============================================ */
 
 .add-task-form {
   display: flex;
@@ -361,6 +386,10 @@ ul {
   outline: none;
   border-color: var(--accent);
 }
+
+/* ============================================
+   Task list
+   ============================================ */
 
 .task-list {
   max-width: 640px;
@@ -512,6 +541,9 @@ ul {
   color: var(--danger);
 }
 
+/* ============================================
+   Info icon + glassmorphism tooltip
+   ============================================ */
 
 .info-icon-wrap {
   position: relative;
@@ -538,6 +570,7 @@ ul {
   color: var(--text);
 }
 
+/* task rows: icon sits inline, revealed on row hover alongside the delete button */
 .task-row .info-icon-wrap {
   opacity: 0;
   transition: opacity var(--transition);
@@ -582,6 +615,10 @@ ul {
   visibility: visible;
   transform: translateY(0);
 }
+
+/* ============================================
+   Empty state & errors
+   ============================================ */
 
 .empty-state {
   max-width: 640px;
@@ -639,6 +676,7 @@ ul {
 
 .home-grid {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: 20px;
 }
@@ -720,4 +758,118 @@ ul {
   background: var(--surface-hover);
   color: var(--text);
   outline: none;
+}
+
+
+.week-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.week-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: var(--radius);
+}
+
+.week-row.is-today {
+  background: var(--accent-soft);
+}
+
+.week-row-day {
+  width: 30px;
+  flex-shrink: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.week-row.is-today .week-row-day {
+  color: var(--text);
+}
+
+.week-row-workout {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.week-row-mark {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.week-row-mark.is-completed {
+  color: var(--accent);
+}
+
+.week-row-mark.is-missed {
+  color: var(--danger);
+}
+
+.workout-today {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.workout-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.workout-entry-name {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.workout-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.workout-btn {
+  width: 44px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.workout-btn:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.workout-btn-done.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--background);
+}
+
+.workout-btn-skip.is-active {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
 }
