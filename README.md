@@ -1,4 +1,4 @@
-Private API
+Personal OS
 
 A personal productivity and life-management application designed to keep tasks, projects, daily habits, and workouts organized in one place.
 
