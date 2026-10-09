@@ -64,8 +64,8 @@ Make sure you have the following installed:
 
 1. Clone the Repository
 
-git clone https://github.com/AbirGoated/private-api.git
-cd private-api
+git clone https://github.com/AbirGoated/personal-os.git
+cd personal-os
 
 2. Set Up the Backend
 
@@ -143,7 +143,7 @@ Current Limitations
 
 Future Vision
 
-The long-term goal is to turn Private API into a personal productivity system that helps manage everyday life from one place.
+The long-term goal is to turn personal os into a personal productivity system that helps manage everyday life from one place.
 
 Rather than being just another to-do list, the project aims to bring together task management, project organization, daily routines, and workout planning in a practical, customizable application.
 
