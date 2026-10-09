@@ -2,7 +2,7 @@ Personal OS
 
 A personal productivity and life-management application designed to keep tasks, projects, daily habits, and workouts organized in one place.
 
-Private API combines a FastAPI backend with a simple web frontend to make everyday planning easier. It allows you to manage tasks, organize larger goals into projects, track daily checklists, and view your workout schedule through a single dashboard.
+Personal OS combines a FastAPI backend with a simple web frontend to make everyday planning easier. It allows you to manage tasks, organize larger goals into projects, track daily checklists, and view your workout schedule through a single dashboard.
 
 The project is currently under development, with plans to improve the workout dashboard, refine the user interface, and make the application accessible from a phone.
 
