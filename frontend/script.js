@@ -1,24 +1,12 @@
-// ============================================
-// Config
-// ============================================
-
 const API_BASE = "http://127.0.0.1:8000";
-
-// ============================================
-// State
-// ============================================
 
 let tasks = [];
 let projects = [];
 let checklistToday = [];
 let workoutWeek = [];
 let loadedDate = null;
-let currentPage = "home"; // "home" | "tasks"
-let currentView = "all"; // "all" | project id (number)
-
-// ============================================
-// DOM refs
-// ============================================
+let currentPage = "home"; 
+let currentView = "all"; 
 
 const el = {
   navHome: document.querySelector('.nav-item[data-page="home"]'),
@@ -51,9 +39,6 @@ const el = {
   errorBanner: document.getElementById("error-banner"),
 };
 
-// ============================================
-// API helpers
-// ============================================
 
 async function apiRequest(path, options = {}) {
   let response;
@@ -72,7 +57,6 @@ async function apiRequest(path, options = {}) {
       const body = await response.json();
       if (body.detail) detail = body.detail;
     } catch (_) {
-      /* no JSON body */
     }
     throw new Error(detail);
   }
@@ -130,10 +114,6 @@ const api = {
     apiRequest(`/workouts/log/${planId}?date=${date}&today=${today}`, { method: "DELETE" }),
 };
 
-// ============================================
-// Error banner
-// ============================================
-
 function showError(message) {
   el.errorBanner.textContent = message;
   el.errorBanner.hidden = false;
@@ -144,9 +124,6 @@ function clearError() {
   el.errorBanner.textContent = "";
 }
 
-// ============================================
-// Helpers
-// ============================================
 
 function getLocalDateString() {
   const now = new Date();
@@ -219,9 +196,6 @@ function createInfoIcon(lines) {
   return wrap;
 }
 
-// ============================================
-// Rendering
-// ============================================
 
 function renderSidebar() {
   el.allCount.textContent = tasks.length;
@@ -520,10 +494,6 @@ function render() {
   renderAddExisting();
 }
 
-// ============================================
-// Actions
-// ============================================
-
 async function loadAll() {
   try {
     const today = getLocalDateString();
@@ -696,10 +666,6 @@ async function handleWorkoutAction(entry, action) {
   }
 }
 
-// ============================================
-// Event wiring
-// ============================================
-
 el.navHome.addEventListener("click", () => {
   currentPage = "home";
   render();
@@ -726,9 +692,5 @@ document.addEventListener("visibilitychange", () => {
     loadAll();
   }
 });
-
-// ============================================
-// Init
-// ============================================
 
 loadAll();
