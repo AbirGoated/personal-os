@@ -2,6 +2,8 @@ import sqlite3
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
 from backend.database import (
     get_tasks, get_task, create_task, delete_task, update_task,
     get_projects, get_project, create_project, update_project, delete_project,
@@ -263,3 +265,6 @@ def reset_workout(plan_id: int, date: str = Query(...), today: str = Query(...))
     if entry is None:
         raise HTTPException(status_code=404, detail="Workout plan entry not found")
     return entry
+
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
