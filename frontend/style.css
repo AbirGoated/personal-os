@@ -624,10 +624,6 @@ ul {
     padding: 24px 20px 40px;
   }
 
-  .task-project-select {
-    display: none;
-  }
-
   .home-grid {
     flex-direction: column;
   }
@@ -835,4 +831,33 @@ ul {
   background: var(--danger-soft);
   border-color: var(--danger);
   color: var(--danger);
+}
+
+#add-task-form > button.add-task-button {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 16px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(176, 141, 87, 0.35);
+  border-radius: 5px;
+  color: var(--accent);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+#add-task-form > button.add-task-button:hover {
+  background: rgba(176, 141, 87, 0.22);
+  border-color: var(--accent);
+}
+
+#add-task-form > button.add-task-button:active {
+  background: rgba(176, 141, 87, 0.3);
 }
