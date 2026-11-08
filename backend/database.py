@@ -88,6 +88,23 @@ now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 for table in ("projects", "tasks"):
     cursor.execute(f"UPDATE {table} SET created_at = ? WHERE created_at IS NULL", (now,))
 
+DEFAULT_WORKOUT_PLAN = [
+    (0, "Shoulders and Triceps"),
+    (1, "Back and Biceps"),
+    (2, "Chest + Abs"),
+    (3, "Shoulders and Triceps"),
+    (4, "Back and Biceps"),
+    (5, "Chest + Abs"),
+]
+
+if cursor.execute("PRAGMA user_version").fetchone()[0] == 0:
+    if cursor.execute("SELECT COUNT(*) FROM workout_plan").fetchone()[0] == 0:
+        cursor.executemany(
+            "INSERT INTO workout_plan (day_of_week, workout_name, created_at) VALUES (?, ?, ?)",
+            [(day, name, now) for day, name in DEFAULT_WORKOUT_PLAN],
+        )
+    cursor.execute("PRAGMA user_version = 1")
+
 connection.commit()
 connection.close()
 

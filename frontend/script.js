@@ -15,6 +15,12 @@ const el = {
   projectList: document.getElementById("project-list"),
   addProjectForm: document.getElementById("add-project-form"),
   newProjectInput: document.getElementById("new-project-input"),
+  projectListPage: document.getElementById("project-list-page"),
+  addProjectFormPage: document.getElementById("add-project-form-page"),
+  pageProjects: document.getElementById("page-projects"),
+  projectsCount: document.getElementById("projects-count"),
+  projectsEmptyState: document.getElementById("projects-empty-state"),
+  tabbarItems: document.querySelectorAll(".tabbar-item"),
 
   pageHome: document.getElementById("page-home"),
   pageTasks: document.getElementById("page-tasks"),
@@ -197,56 +203,91 @@ function createInfoIcon(lines) {
 }
 
 
+function armDelete(button, onConfirm) {
+  const original = button.innerHTML;
+  let armed = false;
+  let timer = null;
+
+  const disarm = () => {
+    armed = false;
+    clearTimeout(timer);
+    button.classList.remove("is-armed");
+    button.innerHTML = original;
+  };
+
+  button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!armed) {
+      armed = true;
+      button.classList.add("is-armed");
+      button.textContent = "Delete?";
+      timer = setTimeout(disarm, 3000);
+      return;
+    }
+    clearTimeout(timer);
+    onConfirm();
+  });
+}
+
+function buildProjectItem(project) {
+  const li = document.createElement("li");
+  li.className =
+    "project-item" +
+    (currentPage === "tasks" && currentView === project.id ? " is-active" : "");
+
+  const btn = document.createElement("button");
+  btn.className = "project-item-btn";
+  btn.type = "button";
+  btn.addEventListener("click", () => {
+    currentPage = "tasks";
+    currentView = project.id;
+    render();
+    window.scrollTo(0, 0);
+  });
+
+  const name = document.createElement("span");
+  name.className = "project-item-name";
+  name.textContent = project.name;
+
+  const count = document.createElement("span");
+  count.className = "project-item-count";
+  count.textContent = project.task_count;
+
+  btn.append(name, count);
+
+  const actions = document.createElement("span");
+  actions.className = "project-item-actions";
+
+  const infoIcon = createInfoIcon(`Created ${formatCreatedAt(project.created_at)}`);
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.className = "project-item-delete";
+  deleteBtn.type = "button";
+  deleteBtn.setAttribute("aria-label", `Delete ${project.name}`);
+  deleteBtn.innerHTML = "&times;";
+  armDelete(deleteBtn, () => handleDeleteProject(project.id));
+
+  actions.append(infoIcon, deleteBtn);
+  li.append(btn, actions);
+  return li;
+}
+
 function renderSidebar() {
   el.allCount.textContent = tasks.length;
   el.navHome.classList.toggle("is-active", currentPage === "home");
   el.navTasks.classList.toggle("is-active", currentPage === "tasks" && currentView === "all");
 
-  el.projectList.innerHTML = "";
-  projects.forEach((project) => {
-    const li = document.createElement("li");
-    li.className =
-      "project-item" +
-      (currentPage === "tasks" && currentView === project.id ? " is-active" : "");
-
-    const btn = document.createElement("button");
-    btn.className = "project-item-btn";
-    btn.type = "button";
-    btn.addEventListener("click", () => {
-      currentPage = "tasks";
-      currentView = project.id;
-      render();
-    });
-
-    const name = document.createElement("span");
-    name.className = "project-item-name";
-    name.textContent = project.name;
-
-    const count = document.createElement("span");
-    count.className = "project-item-count";
-    count.textContent = project.task_count;
-
-    btn.append(name, count);
-
-    const actions = document.createElement("span");
-    actions.className = "project-item-actions";
-
-    const infoIcon = createInfoIcon(`Created ${formatCreatedAt(project.created_at)}`);
-
-    const deleteBtn = document.createElement("button");
-    deleteBtn.className = "project-item-delete";
-    deleteBtn.type = "button";
-    deleteBtn.setAttribute("aria-label", `Delete ${project.name}`);
-    deleteBtn.innerHTML = "&times;";
-    deleteBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      handleDeleteProject(project.id);
-    });
-
-    actions.append(infoIcon, deleteBtn);
-    li.append(btn, actions);
-    el.projectList.appendChild(li);
+  el.tabbarItems.forEach((item) => {
+    item.classList.toggle("is-active", item.dataset.tab === currentPage);
   });
+
+  [el.projectList, el.projectListPage].forEach((list) => {
+    list.innerHTML = "";
+    projects.forEach((project) => list.appendChild(buildProjectItem(project)));
+  });
+
+  el.projectsCount.textContent = `${projects.length} project${projects.length === 1 ? "" : "s"}`;
+  el.projectsEmptyState.hidden = projects.length !== 0;
 
   const previousValue = el.newTaskProject.value;
   el.newTaskProject.innerHTML = '<option value="">No project</option>';
@@ -262,6 +303,7 @@ function renderSidebar() {
 function renderPages() {
   el.pageHome.hidden = currentPage !== "home";
   el.pageTasks.hidden = currentPage !== "tasks";
+  el.pageProjects.hidden = currentPage !== "projects";
 }
 
 function renderHome() {
@@ -292,7 +334,7 @@ function renderHome() {
     deleteBtn.type = "button";
     deleteBtn.setAttribute("aria-label", `Remove "${item.title}"`);
     deleteBtn.innerHTML = "&times;";
-    deleteBtn.addEventListener("click", () => handleDeleteChecklistItem(item.id));
+    armDelete(deleteBtn, () => handleDeleteChecklistItem(item.id));
 
     row.append(checkbox, title, deleteBtn);
     el.checklistItems.appendChild(row);
@@ -330,6 +372,7 @@ function renderWeek() {
     workout.className = "week-row-workout";
     workout.textContent =
       day.entries.length === 0 ? "Rest" : day.entries.map((e) => e.workout_name).join(" · ");
+    workout.title = workout.textContent;
 
     const mark = document.createElement("span");
     mark.className = `week-row-mark is-${status}`;
@@ -377,7 +420,13 @@ function renderWorkoutToday() {
     skipBtn.addEventListener("click", () => handleWorkoutAction(entry, "skip"));
 
     actions.append(doneBtn, skipBtn);
-    wrap.append(name, actions);
+
+    const status = document.createElement("span");
+    status.className = `workout-status is-${entry.status}`;
+    status.textContent =
+      entry.status === "completed" ? "Done" : entry.status === "missed" ? "Skipped" : "Not done yet";
+
+    wrap.append(name, actions, status);
     el.workoutToday.appendChild(wrap);
   });
 }
@@ -456,7 +505,7 @@ function renderTasks() {
     deleteBtn.type = "button";
     deleteBtn.setAttribute("aria-label", `Delete "${task.title}"`);
     deleteBtn.innerHTML = "&times;";
-    deleteBtn.addEventListener("click", () => handleDeleteTask(task.id));
+    armDelete(deleteBtn, () => handleDeleteTask(task.id));
 
     row.appendChild(deleteBtn);
     el.taskList.appendChild(row);
@@ -573,13 +622,14 @@ async function handleDeleteTask(id) {
 
 async function handleAddProject(e) {
   e.preventDefault();
-  const name = el.newProjectInput.value.trim();
+  const input = e.currentTarget.querySelector("input");
+  const name = input.value.trim();
   if (!name) return;
 
   try {
     const created = await api.createProject(name);
     projects.push(created);
-    el.newProjectInput.value = "";
+    input.value = "";
     clearError();
     render();
   } catch (err) {
@@ -679,7 +729,18 @@ el.navTasks.addEventListener("click", () => {
 
 el.addTaskForm.addEventListener("submit", handleAddTask);
 el.addProjectForm.addEventListener("submit", handleAddProject);
+el.addProjectFormPage.addEventListener("submit", handleAddProject);
 el.addChecklistForm.addEventListener("submit", handleAddChecklistItem);
+
+el.tabbarItems.forEach((item) => {
+  item.addEventListener("click", () => {
+    const tab = item.dataset.tab;
+    currentPage = tab;
+    if (tab === "tasks") currentView = "all";
+    render();
+    window.scrollTo(0, 0);
+  });
+});
 
 el.addExistingSelect.addEventListener("change", () => {
   const taskId = Number(el.addExistingSelect.value);

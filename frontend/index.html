@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0b" />
   <title>Personal API</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -39,8 +40,10 @@
             class="add-project-input"
             placeholder="Add project"
             autocomplete="off"
+            enterkeyhint="done"
             maxlength="60"
           />
+          <button type="submit" class="add-btn" aria-label="Add project">Add</button>
         </form>
       </div>
     </aside>
@@ -56,7 +59,7 @@
         </header>
 
         <div class="home-grid" id="home-grid">
-          <section class="home-card">
+          <section class="home-card home-card-checklist">
             <h2 class="home-card-title">Daily Checklist</h2>
             <div class="checklist-items" id="checklist-items"></div>
             <form class="add-checklist-form" id="add-checklist-form">
@@ -66,25 +69,27 @@
                 class="add-checklist-input"
                 placeholder="+ Add item"
                 autocomplete="off"
+                enterkeyhint="done"
                 maxlength="120"
               />
+              <button type="submit" class="add-btn" aria-label="Add checklist item">Add</button>
             </form>
             <p class="empty-state" id="checklist-empty-state" hidden>
               Nothing on your daily checklist yet.
             </p>
           </section>
 
-          <section class="home-card">
-            <h2 class="home-card-title">This Week</h2>
-            <div class="week-list" id="week-list"></div>
-          </section>
-
-          <section class="home-card">
+          <section class="home-card home-card-workout">
             <h2 class="home-card-title">Today's Workout</h2>
             <div class="workout-today" id="workout-today"></div>
             <p class="empty-state" id="workout-empty-state" hidden>
               No workout scheduled today.
             </p>
+          </section>
+
+          <section class="home-card home-card-week">
+            <h2 class="home-card-title">This Week</h2>
+            <div class="week-list" id="week-list"></div>
           </section>
         </div>
       </div>
@@ -102,12 +107,13 @@
             class="add-task-input"
             placeholder="Add a task…"
             autocomplete="off"
+            enterkeyhint="done"
             maxlength="200"
           />
           <select id="new-task-project" class="add-task-project" aria-label="Assign to project">
             <option value="">No project</option>
           </select>
-          <button type="submit" class="add-task-button">Add</button>
+          <button type="submit" class="add-btn" aria-label="Add task">Add</button>
         </form>
 
         <div class="add-existing-wrap" id="add-existing-wrap" hidden>
@@ -123,7 +129,47 @@
           Nothing here yet. Add a task above to get started.
         </p>
       </div>
+
+      <div class="page projects-page" id="page-projects" hidden>
+        <header class="main-header">
+          <h1 class="view-title">Projects</h1>
+          <span class="view-count" id="projects-count">0 projects</span>
+        </header>
+
+        <ul class="project-list" id="project-list-page"></ul>
+
+        <form class="add-project-form" id="add-project-form-page">
+          <input
+            type="text"
+            class="add-project-input"
+            placeholder="Add project"
+            autocomplete="off"
+            enterkeyhint="done"
+            maxlength="60"
+          />
+          <button type="submit" class="add-btn" aria-label="Add project">Add</button>
+        </form>
+
+        <p class="empty-state" id="projects-empty-state" hidden>
+          No projects yet. Add one above.
+        </p>
+      </div>
     </main>
+
+    <nav class="tabbar" id="tabbar" aria-label="Main">
+      <button class="tabbar-item is-active" data-tab="home" type="button">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+        <span>Home</span>
+      </button>
+      <button class="tabbar-item" data-tab="tasks" type="button">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.5"/></svg>
+        <span>Tasks</span>
+      </button>
+      <button class="tabbar-item" data-tab="projects" type="button">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        <span>Projects</span>
+      </button>
+    </nav>
 
   </div>
 
