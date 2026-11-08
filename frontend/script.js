@@ -7,6 +7,7 @@ let workoutWeek = [];
 let loadedDate = null;
 let currentPage = "home"; 
 let currentView = "all"; 
+let formView = null;
 
 const el = {
   navHome: document.querySelector('.nav-item[data-page="home"]'),
@@ -445,6 +446,8 @@ function renderTasks() {
     const project = projects.find((p) => p.id === currentView);
     el.viewTitle.textContent = project ? project.name : "Project";
   }
+  el.newTaskInput.placeholder =
+    currentView === "all" ? "Add a task…" : `Add a task to ${el.viewTitle.textContent}…`;
   el.viewCount.textContent = `${visible.length} task${visible.length === 1 ? "" : "s"}`;
 
   el.taskList.innerHTML = "";
@@ -535,7 +538,19 @@ function renderAddExisting() {
   });
 }
 
+function defaultProjectValue() {
+  return currentView === "all" ? "" : String(currentView);
+}
+
+function syncAddTaskProject() {
+  if (formView !== currentView) {
+    el.newTaskProject.value = defaultProjectValue();
+    formView = currentView;
+  }
+}
+
 function render() {
+  syncAddTaskProject();
   renderPages();
   renderSidebar();
   renderHome();
@@ -576,6 +591,7 @@ async function handleAddTask(e) {
     const created = await api.createTask(title, project_id);
     tasks.unshift(created);
     el.newTaskInput.value = "";
+    el.newTaskProject.value = defaultProjectValue();
     await refreshProjectCounts();
     clearError();
     render();
