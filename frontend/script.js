@@ -39,6 +39,10 @@ const el = {
   addTaskForm: document.getElementById("add-task-form"),
   newTaskInput: document.getElementById("new-task-input"),
   newTaskProject: document.getElementById("new-task-project"),
+  newTaskDue: document.getElementById("new-task-due"),
+  scheduledList: document.getElementById("scheduled-list"),
+  scheduledMore: document.getElementById("scheduled-more"),
+  scheduledEmptyState: document.getElementById("scheduled-empty-state"),
   taskList: document.getElementById("task-list"),
   addExistingWrap: document.getElementById("add-existing-wrap"),
   addExistingSelect: document.getElementById("add-existing-select"),
@@ -80,10 +84,10 @@ async function apiRequest(path, options = {}) {
 
 const api = {
   getTasks: () => apiRequest("/tasks"),
-  createTask: (title, project_id) =>
+  createTask: (title, project_id, due_date) =>
     apiRequest("/tasks", {
       method: "POST",
-      body: JSON.stringify({ title, project_id }),
+      body: JSON.stringify({ title, project_id, due_date }),
     }),
   updateTask: (id, fields) =>
     apiRequest(`/tasks/${id}`, {
@@ -341,6 +345,7 @@ function renderHome() {
     el.checklistItems.appendChild(row);
   });
 
+  renderScheduled();
   renderWeek();
   renderWorkoutToday();
 }
@@ -432,13 +437,109 @@ function renderWorkoutToday() {
   });
 }
 
+const recentlyToggled = new Set();
+const toggleTimers = new Map();
+
+function daysUntil(dateStr) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const [ty, tm, td] = getLocalDateString().split("-").map(Number);
+  return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(ty, tm - 1, td)) / 86400000);
+}
+
+function formatDueShort(dateStr) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function dueLabel(days) {
+  if (days < 0) return `Overdue · ${-days}d`;
+  if (days === 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  return `in ${days} days`;
+}
+
+function urgencyClass(days) {
+  if (days < 0) return " is-overdue";
+  if (days <= 2) return " is-red";
+  if (days === 3) return " is-orange";
+  return "";
+}
+
+function shownAsCompleted(task) {
+  return recentlyToggled.has(task.id) ? !task.completed : task.completed;
+}
+
+function sortTasks(list) {
+  return [...list].sort((a, b) => {
+    const aDone = shownAsCompleted(a);
+    const bDone = shownAsCompleted(b);
+    if (aDone !== bDone) return aDone ? 1 : -1;
+    if (aDone) return (b.completed_at || "").localeCompare(a.completed_at || "") || b.id - a.id;
+    if (a.due_date && b.due_date && a.due_date !== b.due_date) return a.due_date < b.due_date ? -1 : 1;
+    if (a.due_date && !b.due_date) return -1;
+    if (!a.due_date && b.due_date) return 1;
+    return b.id - a.id;
+  });
+}
+
 function getVisibleTasks() {
   if (currentView === "all") return tasks;
   return tasks.filter((t) => t.project_id === currentView);
 }
 
+function getScheduledTasks() {
+  return tasks
+    .filter((t) => t.due_date && !shownAsCompleted(t) && daysUntil(t.due_date) <= 7)
+    .sort((a, b) => (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : b.id - a.id));
+}
+
+function renderScheduled() {
+  const scheduled = getScheduledTasks();
+  const SHOWN = 5;
+
+  el.scheduledList.innerHTML = "";
+  el.scheduledEmptyState.hidden = scheduled.length !== 0;
+
+  scheduled.slice(0, SHOWN).forEach((task) => {
+    const days = daysUntil(task.due_date);
+    const row = document.createElement("div");
+    row.className =
+      "scheduled-row" + urgencyClass(days) + (task.completed ? " is-completed" : "");
+
+    const checkbox = document.createElement("button");
+    checkbox.className = "task-checkbox";
+    checkbox.type = "button";
+    checkbox.setAttribute("aria-label", `Mark "${task.title}" complete`);
+    const mark = document.createElement("span");
+    mark.className = "task-checkbox-mark";
+    checkbox.appendChild(mark);
+    checkbox.addEventListener("click", () => handleToggleComplete(task));
+
+    const body = document.createElement("div");
+    body.className = "scheduled-body";
+    const title = document.createElement("span");
+    title.className = "scheduled-title";
+    title.textContent = task.title;
+    const project = document.createElement("span");
+    project.className = "scheduled-project";
+    project.textContent = task.project_name || "No project";
+    body.append(title, project);
+
+    const due = document.createElement("span");
+    due.className = "scheduled-due";
+    due.textContent = dueLabel(days);
+
+    row.append(checkbox, body, due);
+    el.scheduledList.appendChild(row);
+  });
+
+  const extra = scheduled.length - SHOWN;
+  el.scheduledMore.hidden = extra <= 0;
+  if (extra > 0) el.scheduledMore.textContent = `+${extra} more · see all in Tasks`;
+}
+
 function renderTasks() {
-  const visible = getVisibleTasks();
+  const visible = sortTasks(getVisibleTasks());
 
   if (currentView === "all") {
     el.viewTitle.textContent = "All tasks";
@@ -448,7 +549,8 @@ function renderTasks() {
   }
   el.newTaskInput.placeholder =
     currentView === "all" ? "Add a task…" : `Add a task to ${el.viewTitle.textContent}…`;
-  el.viewCount.textContent = `${visible.length} task${visible.length === 1 ? "" : "s"}`;
+  const finished = visible.filter((t) => t.completed).length;
+  el.viewCount.textContent = `${visible.length - finished} unfinished · ${finished} finished`;
 
   el.taskList.innerHTML = "";
   el.emptyState.hidden = visible.length !== 0;
@@ -501,7 +603,30 @@ function renderTasks() {
       handleReassignTask(task.id, newProjectId);
     });
 
-    row.appendChild(projectSelect);
+    const dueChip = document.createElement("label");
+    dueChip.className = "task-due" + (task.due_date ? " has-date" : "");
+    const dueText = document.createElement("span");
+    dueText.textContent = task.due_date ? `Due ${formatDueShort(task.due_date)}` : "+ Due date";
+    const dueInput = document.createElement("input");
+    dueInput.type = "date";
+    dueInput.className = "task-due-input";
+    dueInput.value = task.due_date || "";
+    dueInput.setAttribute("aria-label", `Due date for "${task.title}"`);
+    dueInput.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (dueInput.showPicker) {
+        try {
+          dueInput.showPicker();
+        } catch (_) {}
+      }
+    });
+    dueInput.addEventListener("change", () => handleSetDueDate(task, dueInput.value));
+    dueChip.append(dueText, dueInput);
+
+    const meta = document.createElement("div");
+    meta.className = "task-meta";
+    meta.append(projectSelect, dueChip);
+    row.appendChild(meta);
 
     const deleteBtn = document.createElement("button");
     deleteBtn.className = "task-delete";
@@ -586,11 +711,13 @@ async function handleAddTask(e) {
 
   const projectValue = el.newTaskProject.value;
   const project_id = projectValue ? Number(projectValue) : null;
+  const due_date = el.newTaskDue.value || null;
 
   try {
-    const created = await api.createTask(title, project_id);
+    const created = await api.createTask(title, project_id, due_date);
     tasks.unshift(created);
     el.newTaskInput.value = "";
+    el.newTaskDue.value = "";
     el.newTaskProject.value = defaultProjectValue();
     await refreshProjectCounts();
     clearError();
@@ -604,10 +731,35 @@ async function handleToggleComplete(task) {
   try {
     const updated = await api.updateTask(task.id, { completed: !task.completed });
     tasks = tasks.map((t) => (t.id === task.id ? updated : t));
+    recentlyToggled.add(task.id);
+    clearTimeout(toggleTimers.get(task.id));
+    toggleTimers.set(
+      task.id,
+      setTimeout(() => {
+        recentlyToggled.delete(task.id);
+        toggleTimers.delete(task.id);
+        renderTasks();
+        renderHome();
+      }, 450)
+    );
     clearError();
     renderTasks();
+    renderHome();
   } catch (err) {
     showError(err.message);
+  }
+}
+
+async function handleSetDueDate(task, value) {
+  try {
+    const updated = await api.updateTask(task.id, { due_date: value || null });
+    tasks = tasks.map((t) => (t.id === task.id ? updated : t));
+    clearError();
+    renderTasks();
+    renderHome();
+  } catch (err) {
+    showError(err.message);
+    renderTasks();
   }
 }
 
@@ -756,6 +908,13 @@ el.tabbarItems.forEach((item) => {
     render();
     window.scrollTo(0, 0);
   });
+});
+
+el.scheduledMore.addEventListener("click", () => {
+  currentPage = "tasks";
+  currentView = "all";
+  render();
+  window.scrollTo(0, 0);
 });
 
 el.addExistingSelect.addEventListener("change", () => {

@@ -59,25 +59,36 @@
         </header>
 
         <div class="home-grid" id="home-grid">
-          <section class="home-card home-card-checklist">
-            <h2 class="home-card-title">Daily Checklist</h2>
-            <div class="checklist-items" id="checklist-items"></div>
-            <form class="add-checklist-form" id="add-checklist-form">
-              <input
-                type="text"
-                id="new-checklist-input"
-                class="add-checklist-input"
-                placeholder="+ Add item"
-                autocomplete="off"
-                enterkeyhint="done"
-                maxlength="120"
-              />
-              <button type="submit" class="add-btn" aria-label="Add checklist item">Add</button>
-            </form>
-            <p class="empty-state" id="checklist-empty-state" hidden>
-              Nothing on your daily checklist yet.
-            </p>
-          </section>
+          <div class="home-col">
+            <section class="home-card home-card-checklist">
+              <h2 class="home-card-title">Daily Checklist</h2>
+              <div class="checklist-items" id="checklist-items"></div>
+              <form class="add-checklist-form" id="add-checklist-form">
+                <input
+                  type="text"
+                  id="new-checklist-input"
+                  class="add-checklist-input"
+                  placeholder="+ Add item"
+                  autocomplete="off"
+                  enterkeyhint="done"
+                  maxlength="120"
+                />
+                <button type="submit" class="add-btn" aria-label="Add checklist item">Add</button>
+              </form>
+              <p class="empty-state" id="checklist-empty-state" hidden>
+                Nothing on your daily checklist yet.
+              </p>
+            </section>
+
+            <section class="home-card home-card-scheduled">
+              <h2 class="home-card-title">Scheduled</h2>
+              <div class="scheduled-list" id="scheduled-list"></div>
+              <button type="button" class="scheduled-more" id="scheduled-more" hidden></button>
+              <p class="empty-state" id="scheduled-empty-state" hidden>
+                Nothing due in the next 7 days.
+              </p>
+            </section>
+          </div>
 
           <section class="home-card home-card-workout">
             <h2 class="home-card-title">Today's Workout</h2>
@@ -113,6 +124,10 @@
           <select id="new-task-project" class="add-task-project" aria-label="Assign to project">
             <option value="">No project</option>
           </select>
+          <label class="due-field">
+            <span class="due-field-label">Due</span>
+            <input type="date" id="new-task-due" class="due-field-input" aria-label="Due date (optional)" />
+          </label>
           <button type="submit" class="add-btn" aria-label="Add task">Add</button>
         </form>
 

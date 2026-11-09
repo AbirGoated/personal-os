@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import date as date_type
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -26,11 +27,13 @@ class Task(BaseModel):
     title: str
     completed: bool = False
     project_id: int | None = None
+    due_date: date_type | None = None
 
 class TaskUpdate(BaseModel):
     title: str | None = None
     completed: bool | None = None
     project_id: int | None = None
+    due_date: date_type | None = None
 
 class TaskOut(BaseModel):
     id: int
@@ -40,6 +43,7 @@ class TaskOut(BaseModel):
     project_name: str | None = None
     created_at: str
     completed_at: str | None = None
+    due_date: str | None = None
 
 class Project(BaseModel):
     name: str
@@ -102,7 +106,11 @@ def read_task(task_id: int):
 @app.post("/tasks", response_model=TaskOut)
 def create_new_task(task: Task):
     try:
-        task_id = create_task(task.title, task.project_id)
+        task_id = create_task(
+            task.title,
+            task.project_id,
+            task.due_date.isoformat() if task.due_date else None,
+        )
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=400, detail="project_id does not exist")
     return get_task(task_id)
@@ -119,6 +127,8 @@ def update_existing_task(task_id: int, task: TaskUpdate):
     updates = task.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields provided to update")
+    if updates.get("due_date") is not None:
+        updates["due_date"] = updates["due_date"].isoformat()
     try:
         rows_updated = update_task(task_id, **updates)
     except sqlite3.IntegrityError:

@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     project_id INTEGER,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     completed_at TEXT,
+    due_date TEXT,
     FOREIGN KEY (project_id) REFERENCES projects(id)
 )
 """)
@@ -79,6 +80,8 @@ CREATE TABLE IF NOT EXISTS workout_log (
 existing_task_columns = [row[1] for row in cursor.execute("PRAGMA table_info(tasks)")]
 if "completed_at" not in existing_task_columns:
     cursor.execute("ALTER TABLE tasks ADD COLUMN completed_at TEXT")
+if "due_date" not in existing_task_columns:
+    cursor.execute("ALTER TABLE tasks ADD COLUMN due_date TEXT")
 for table in ("projects", "tasks"):
     existing_columns = [row[1] for row in cursor.execute(f"PRAGMA table_info({table})")]
     if "created_at" not in existing_columns:
@@ -111,13 +114,13 @@ connection.close()
 def _now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-def create_task(title, project_id=None):
+def create_task(title, project_id=None, due_date=None):
     connection = get_connection()
     try:
         cursor = connection.cursor()
         cursor.execute(
-            """INSERT INTO tasks (title, completed, project_id, created_at) VALUES (?, ?, ?, ?)""",
-            (title, 0, project_id, _now())
+            """INSERT INTO tasks (title, completed, project_id, created_at, due_date) VALUES (?, ?, ?, ?, ?)""",
+            (title, 0, project_id, _now(), due_date)
         )
         connection.commit()
         return cursor.lastrowid
@@ -129,7 +132,7 @@ def get_tasks():
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        cursor.execute("""SELECT tasks.id, tasks.title, tasks.completed, tasks.project_id, projects.name, tasks.created_at, tasks.completed_at FROM tasks LEFT JOIN projects ON tasks.project_id = projects.id ORDER BY tasks.id DESC""")
+        cursor.execute("""SELECT tasks.id, tasks.title, tasks.completed, tasks.project_id, projects.name, tasks.created_at, tasks.completed_at, tasks.due_date FROM tasks LEFT JOIN projects ON tasks.project_id = projects.id ORDER BY tasks.id DESC""")
         rows = cursor.fetchall()
         return [
             {
@@ -140,6 +143,7 @@ def get_tasks():
                 "project_name": row[4],
                 "created_at": row[5],
                 "completed_at": row[6],
+                "due_date": row[7],
             }
             for row in rows
         ]
@@ -150,7 +154,7 @@ def get_task(task_id):
     connection = get_connection()
     try:
         cursor = connection.cursor()
-        cursor.execute("""SELECT tasks.id, tasks.title, tasks.completed, tasks.project_id, projects.name, tasks.created_at, tasks.completed_at FROM tasks LEFT JOIN projects ON tasks.project_id = projects.id WHERE tasks.id = ?""", (task_id,))
+        cursor.execute("""SELECT tasks.id, tasks.title, tasks.completed, tasks.project_id, projects.name, tasks.created_at, tasks.completed_at, tasks.due_date FROM tasks LEFT JOIN projects ON tasks.project_id = projects.id WHERE tasks.id = ?""", (task_id,))
         row = cursor.fetchone()
         if row is None:
             return None
@@ -162,6 +166,7 @@ def get_task(task_id):
             "project_name": row[4],
             "created_at": row[5],
             "completed_at": row[6],
+            "due_date": row[7],
         }
     finally:
         connection.close()
