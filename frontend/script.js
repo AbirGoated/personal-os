@@ -41,7 +41,6 @@ const el = {
   newTaskProject: document.getElementById("new-task-project"),
   newTaskDue: document.getElementById("new-task-due"),
   scheduledList: document.getElementById("scheduled-list"),
-  scheduledMore: document.getElementById("scheduled-more"),
   scheduledEmptyState: document.getElementById("scheduled-empty-state"),
   taskList: document.getElementById("task-list"),
   addExistingWrap: document.getElementById("add-existing-wrap"),
@@ -493,14 +492,20 @@ function getScheduledTasks() {
     .sort((a, b) => (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : b.id - a.id));
 }
 
+function updateScheduledScrollHint() {
+  const list = el.scheduledList;
+  const hiddenBelow = list.scrollHeight - list.scrollTop - list.clientHeight;
+  list.classList.toggle("can-scroll-down", hiddenBelow > 4);
+}
+
 function renderScheduled() {
   const scheduled = getScheduledTasks();
-  const SHOWN = 5;
+  const previousScroll = el.scheduledList.scrollTop;
 
   el.scheduledList.innerHTML = "";
   el.scheduledEmptyState.hidden = scheduled.length !== 0;
 
-  scheduled.slice(0, SHOWN).forEach((task) => {
+  scheduled.forEach((task) => {
     const days = daysUntil(task.due_date);
     const row = document.createElement("div");
     row.className =
@@ -533,9 +538,8 @@ function renderScheduled() {
     el.scheduledList.appendChild(row);
   });
 
-  const extra = scheduled.length - SHOWN;
-  el.scheduledMore.hidden = extra <= 0;
-  if (extra > 0) el.scheduledMore.textContent = `+${extra} more · see all in Tasks`;
+  el.scheduledList.scrollTop = previousScroll;
+  updateScheduledScrollHint();
 }
 
 function renderTasks() {
@@ -910,12 +914,8 @@ el.tabbarItems.forEach((item) => {
   });
 });
 
-el.scheduledMore.addEventListener("click", () => {
-  currentPage = "tasks";
-  currentView = "all";
-  render();
-  window.scrollTo(0, 0);
-});
+el.scheduledList.addEventListener("scroll", updateScheduledScrollHint);
+window.addEventListener("resize", updateScheduledScrollHint);
 
 el.addExistingSelect.addEventListener("change", () => {
   const taskId = Number(el.addExistingSelect.value);

@@ -1001,6 +1001,19 @@ ul {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.scheduled-list.can-scroll-down {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
+}
+
+.scheduled-row {
+  flex-shrink: 0;
 }
 
 .scheduled-row {
@@ -1076,22 +1089,6 @@ ul {
   color: var(--text-muted);
   text-decoration: line-through;
   text-decoration-color: var(--border);
-}
-
-.scheduled-more {
-  display: block;
-  margin-top: 8px;
-  padding: 6px 2px;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 12.5px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.scheduled-more:hover {
-  color: var(--text);
 }
 
 .task-meta {
