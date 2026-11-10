@@ -1,3 +1,10 @@
+window.addEventListener("error", (event) => {
+  const banner = document.getElementById("error-banner");
+  if (!banner) return;
+  banner.textContent = `Something went wrong while loading: ${event.message}. Try reloading the page.`;
+  banner.hidden = false;
+});
+
 const API_BASE = window.location.origin;
 
 let tasks = [];
