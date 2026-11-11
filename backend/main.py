@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pathlib import Path
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from backend.database import (
     get_tasks, get_task, create_task, delete_task, update_task,
@@ -284,4 +285,15 @@ class NoCacheStaticFiles(StaticFiles):
 
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+
+
+@app.get("/", include_in_schema=False)
+def serve_index():
+    html = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
+    version = int(max((FRONTEND_DIR / name).stat().st_mtime for name in ("script.js", "style.css")))
+    html = html.replace('href="style.css"', f'href="style.css?v={version}"')
+    html = html.replace('src="script.js"', f'src="script.js?v={version}"')
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
 app.mount("/", NoCacheStaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
