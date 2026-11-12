@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0b" />
+  <title>Personal OS</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: #0a0a0b;
+      color: #ededef;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    main { width: 100%; max-width: 340px; }
+    svg { display: block; margin-bottom: 22px; }
+    h1 { margin: 0 0 8px; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+    p { margin: 0 0 22px; font-size: 15px; line-height: 1.5; color: #8b8b90; }
+    button {
+      min-height: 44px;
+      padding: 0 22px;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      color: #b08d57;
+      background: rgba(176, 141, 87, 0.14);
+      border: 1px solid rgba(176, 141, 87, 0.35);
+      border-radius: 6px;
+    }
+    button:active { background: rgba(176, 141, 87, 0.3); }
+    .status { margin-top: 18px; font-size: 12.5px; color: #8b8b90; }
+  </style>
+</head>
+<body>
+  <main>
+    <svg width="44" height="44" viewBox="0 0 44 44" fill="none" aria-hidden="true">
+      <circle cx="22" cy="22" r="17" stroke="#2c2c30" stroke-width="3.2"/>
+      <path d="M22 5 A17 17 0 1 1 5 22" stroke="#b08d57" stroke-width="3.2" stroke-linecap="round"/>
+    </svg>
+    <h1>Server isn't running</h1>
+    <p>Open Termux and make sure the Personal OS server is running. This page reconnects by itself.</p>
+    <button type="button" id="retry">Retry now</button>
+    <div class="status" id="status">Checking every few seconds…</div>
+  </main>
+  <script>
+    function check() {
+      return fetch("/tasks", { cache: "no-store" })
+        .then(function (r) { if (r.ok) location.replace("/"); })
+        .catch(function () {});
+    }
+    document.getElementById("retry").addEventListener("click", function () {
+      document.getElementById("status").textContent = "Trying…";
+      check().then(function () {
+        setTimeout(function () { document.getElementById("status").textContent = "Still not reachable. Checking every few seconds…"; }, 600);
+      });
+    });
+    setInterval(check, 3000);
+  </script>
+</body>
+</html>
