@@ -13,6 +13,7 @@ from backend.database import (
     get_checklist_today, complete_checklist_item, uncomplete_checklist_item,
     create_workout_plan, get_workout_plan, delete_workout_plan,
     get_workout_week, get_workout_entry, log_workout, clear_workout_log,
+    create_folder, get_folders, get_folder, update_folder, delete_folder,
 )
 
 app = FastAPI()
@@ -29,12 +30,14 @@ class Task(BaseModel):
     completed: bool = False
     project_id: int | None = None
     due_date: date_type | None = None
+    folder_id: int | None = None
 
 class TaskUpdate(BaseModel):
     title: str | None = None
     completed: bool | None = None
     project_id: int | None = None
     due_date: date_type | None = None
+    folder_id: int | None = None
 
 class TaskOut(BaseModel):
     id: int
@@ -45,6 +48,7 @@ class TaskOut(BaseModel):
     created_at: str
     completed_at: str | None = None
     due_date: str | None = None
+    folder_id: int | None = None
 
 class Project(BaseModel):
     name: str
@@ -93,6 +97,24 @@ class WorkoutDayOut(BaseModel):
     entries: list[WorkoutEntryOut]
 
 
+class FolderIn(BaseModel):
+    project_id: int
+    parent_id: int | None = None
+    name: str
+
+
+class FolderUpdate(BaseModel):
+    name: str
+
+
+class FolderOut(BaseModel):
+    id: int
+    project_id: int
+    parent_id: int | None = None
+    name: str
+    created_at: str
+
+
 @app.get("/tasks", response_model=list[TaskOut])
 def read_tasks():
     return get_tasks()
@@ -111,9 +133,12 @@ def create_new_task(task: Task):
             task.title,
             task.project_id,
             task.due_date.isoformat() if task.due_date else None,
+            task.folder_id,
         )
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=400, detail="project_id does not exist")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return get_task(task_id)
 
 @app.delete("/tasks/{task_id}")
@@ -134,6 +159,8 @@ def update_existing_task(task_id: int, task: TaskUpdate):
         rows_updated = update_task(task_id, **updates)
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=400, detail="project_id does not exist")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if rows_updated == 0:
         raise HTTPException(status_code=404, detail="Task not found")
     return get_task(task_id)
@@ -276,6 +303,50 @@ def reset_workout(plan_id: int, date: str = Query(...), today: str = Query(...))
     if entry is None:
         raise HTTPException(status_code=404, detail="Workout plan entry not found")
     return entry
+
+
+@app.get("/folders", response_model=list[FolderOut])
+def read_folders():
+    return get_folders()
+
+
+@app.post("/folders", response_model=FolderOut)
+def create_new_folder(folder: FolderIn):
+    try:
+        folder_id = create_folder(folder.project_id, folder.parent_id, folder.name)
+    except ValueError as e:
+        msg = str(e)
+        if msg in ("Project not found.", "Parent folder not found.", "Folder not found."):
+            raise HTTPException(status_code=404, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
+    result = get_folder(folder_id)
+    if result is None:
+        raise HTTPException(status_code=500, detail="Failed to create folder")
+    return result
+
+
+@app.put("/folders/{folder_id}", response_model=FolderOut)
+def update_existing_folder(folder_id: int, folder: FolderUpdate):
+    try:
+        result = update_folder(folder_id, folder.name)
+    except ValueError as e:
+        if str(e) == "Folder not found.":
+            raise HTTPException(status_code=404, detail="Folder not found.")
+        raise HTTPException(status_code=400, detail=str(e))
+    if result is None:
+        raise HTTPException(status_code=404, detail="Folder not found.")
+    return result
+
+
+@app.delete("/folders/{folder_id}")
+def remove_folder(folder_id: int):
+    try:
+        result = delete_folder(folder_id)
+    except ValueError as e:
+        if str(e) == "Folder not found.":
+            raise HTTPException(status_code=404, detail="Folder not found.")
+        raise HTTPException(status_code=400, detail=str(e))
+    return result
 
 class NoCacheStaticFiles(StaticFiles):
     async def get_response(self, path, scope):

@@ -3,6 +3,9 @@ import os
 from datetime import datetime, timezone, date, timedelta
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tasks.db")
+OVERRIDE_DB_PATH = os.environ.get("PERSONAL_OS_DB")
+if OVERRIDE_DB_PATH:
+    DB_PATH = OVERRIDE_DB_PATH
 
 def get_connection():
     connection = sqlite3.connect(DB_PATH, timeout=5)
@@ -77,11 +80,39 @@ CREATE TABLE IF NOT EXISTS workout_log (
 )
 """)
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS folders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id INTEGER NOT NULL,
+    parent_id INTEGER,
+    name TEXT NOT NULL,
+    created_at TEXT,
+    FOREIGN KEY (project_id) REFERENCES projects(id),
+    FOREIGN KEY (parent_id) REFERENCES folders(id)
+)
+""")
+
+existing_folder_columns = [row[1] for row in cursor.execute("PRAGMA table_info(folders)")]
+if "parent_id" not in existing_folder_columns:
+    cursor.execute("ALTER TABLE folders ADD COLUMN parent_id INTEGER REFERENCES folders(id)")
+if "created_at" not in existing_folder_columns:
+    cursor.execute("ALTER TABLE folders ADD COLUMN created_at TEXT")
+
+try:
+    cursor.execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_folders_unique_name
+        ON folders(project_id, COALESCE(parent_id, 0), lower(name))
+    """)
+except sqlite3.OperationalError:
+    pass
+
 existing_task_columns = [row[1] for row in cursor.execute("PRAGMA table_info(tasks)")]
 if "completed_at" not in existing_task_columns:
     cursor.execute("ALTER TABLE tasks ADD COLUMN completed_at TEXT")
 if "due_date" not in existing_task_columns:
     cursor.execute("ALTER TABLE tasks ADD COLUMN due_date TEXT")
+if "folder_id" not in existing_task_columns:
+    cursor.execute("ALTER TABLE tasks ADD COLUMN folder_id INTEGER REFERENCES folders(id)")
 for table in ("projects", "tasks"):
     existing_columns = [row[1] for row in cursor.execute(f"PRAGMA table_info({table})")]
     if "created_at" not in existing_columns:
@@ -525,5 +556,298 @@ def clear_workout_log(plan_id, date_str):
         )
         connection.commit()
         return cursor.rowcount
+    finally:
+        connection.close()
+
+
+def create_folder(project_id, parent_id, name):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT id FROM projects WHERE id = ?", (project_id,))
+        if cursor.fetchone() is None:
+            raise ValueError("Project not found.")
+        if not name or not name.strip():
+            raise ValueError("Folder name can't be empty.")
+        if len(name.strip()) > 60:
+            raise ValueError("Folder name is too long (60 characters max).")
+        if parent_id is not None:
+            cursor.execute("SELECT id, project_id FROM folders WHERE id = ?", (parent_id,))
+            row = cursor.fetchone()
+            if row is None:
+                raise ValueError("Parent folder not found.")
+            if row[1] != project_id:
+                raise ValueError("Parent folder belongs to a different project.")
+            depth = 1
+            current_parent = parent_id
+            while current_parent is not None:
+                depth += 1
+                if depth > 10:
+                    raise ValueError("Folders can't be nested deeper than 10 levels.")
+                cursor.execute("SELECT parent_id FROM folders WHERE id = ?", (current_parent,))
+                row = cursor.fetchone()
+                current_parent = row[0] if row else None
+        cursor.execute(
+            """INSERT INTO folders (project_id, parent_id, name, created_at) VALUES (?, ?, ?, ?)""",
+            (project_id, parent_id, name.strip(), _now())
+        )
+        connection.commit()
+        return cursor.lastrowid
+    except sqlite3.IntegrityError:
+        raise ValueError("A folder with that name already exists here.")
+    finally:
+        connection.close()
+
+
+def get_folders():
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("""SELECT id, project_id, parent_id, name, created_at FROM folders ORDER BY id""")
+        rows = cursor.fetchall()
+        return [
+            {"id": row[0], "project_id": row[1], "parent_id": row[2], "name": row[3], "created_at": row[4]}
+            for row in rows
+        ]
+    finally:
+        connection.close()
+
+
+def get_folder(folder_id):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("""SELECT id, project_id, parent_id, name, created_at FROM folders WHERE id = ?""", (folder_id,))
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {"id": row[0], "project_id": row[1], "parent_id": row[2], "name": row[3], "created_at": row[4]}
+    finally:
+        connection.close()
+
+
+def update_folder(folder_id, name):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT id FROM folders WHERE id = ?", (folder_id,))
+        if cursor.fetchone() is None:
+            raise ValueError("Folder not found.")
+        cursor.execute(
+            """UPDATE folders SET name = ? WHERE id = ?""",
+            (name.strip(), folder_id)
+        )
+        connection.commit()
+        return get_folder(folder_id)
+    except sqlite3.IntegrityError:
+        raise ValueError("A folder with that name already exists here.")
+    finally:
+        connection.close()
+
+
+def _get_folder_depth(cursor, folder_id):
+    depth = 0
+    current = folder_id
+    while current is not None:
+        cursor.execute("SELECT parent_id FROM folders WHERE id = ?", (current,))
+        row = cursor.fetchone()
+        current = row[0] if row else None
+        depth += 1
+    return depth
+
+
+def _find_free_name(cursor, project_id, parent_id, base_name):
+    name = base_name
+    suffix = 2
+    while True:
+        cursor.execute(
+            "SELECT id FROM folders WHERE project_id = ? AND COALESCE(parent_id, 0) = COALESCE(?, 0) AND lower(name) = lower(?)",
+            (project_id, parent_id, name)
+        )
+        if cursor.fetchone() is None:
+            return name
+        name = f"{base_name} ({suffix})"
+        suffix += 1
+
+
+def delete_folder(folder_id):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT id, project_id, parent_id, name FROM folders WHERE id = ?", (folder_id,))
+        row = cursor.fetchone()
+        if row is None:
+            raise ValueError("Folder not found.")
+        project_id, dest = row[1], row[2]
+        # First get children before any updates
+        cursor.execute("SELECT id, name FROM folders WHERE parent_id = ? ORDER BY name", (folder_id,))
+        children = cursor.fetchall()
+        # Move tasks
+        cursor.execute("UPDATE tasks SET folder_id = ? WHERE folder_id = ?", (dest, folder_id))
+        moved_tasks = cursor.rowcount
+        # Move child folders
+        moved_folders = 0
+        for child_id, child_name in children:
+            free_name = _find_free_name(cursor, project_id, dest, child_name)
+            cursor.execute("UPDATE folders SET parent_id = ?, name = ? WHERE id = ?", (dest, free_name, child_id))
+            moved_folders += 1
+        cursor.execute("DELETE FROM folders WHERE id = ?", (folder_id,))
+        connection.commit()
+        return {"message": "Folder deleted", "moved_tasks": moved_tasks, "moved_folders": moved_folders, "destination_folder_id": dest}
+    finally:
+        connection.close()
+
+
+def get_tasks():
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("""SELECT tasks.id, tasks.title, tasks.completed, tasks.project_id, projects.name, tasks.created_at, tasks.completed_at, tasks.due_date, tasks.folder_id FROM tasks LEFT JOIN projects ON tasks.project_id = projects.id ORDER BY tasks.id DESC""")
+        rows = cursor.fetchall()
+        return [
+            {
+                "id": row[0],
+                "title": row[1],
+                "completed": bool(row[2]),
+                "project_id": row[3],
+                "project_name": row[4],
+                "created_at": row[5],
+                "completed_at": row[6],
+                "due_date": row[7],
+                "folder_id": row[8],
+            }
+            for row in rows
+        ]
+    finally:
+        connection.close()
+
+
+def get_task(task_id):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("""SELECT tasks.id, tasks.title, tasks.completed, tasks.project_id, projects.name, tasks.created_at, tasks.completed_at, tasks.due_date, tasks.folder_id FROM tasks LEFT JOIN projects ON tasks.project_id = projects.id WHERE tasks.id = ?""", (task_id,))
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "title": row[1],
+            "completed": bool(row[2]),
+            "project_id": row[3],
+            "project_name": row[4],
+            "created_at": row[5],
+            "completed_at": row[6],
+            "due_date": row[7],
+            "folder_id": row[8],
+        }
+    finally:
+        connection.close()
+
+
+def create_task(title, project_id=None, due_date=None, folder_id=None):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        if folder_id is not None:
+            if project_id is None:
+                raise ValueError("A task needs a project to be placed in a folder.")
+            cursor.execute("SELECT id, project_id FROM folders WHERE id = ?", (folder_id,))
+            row = cursor.fetchone()
+            if row is None:
+                raise ValueError("Folder not found.")
+            if row[1] != project_id:
+                raise ValueError("Folder belongs to a different project.")
+        cursor.execute(
+            """INSERT INTO tasks (title, completed, project_id, created_at, due_date, folder_id) VALUES (?, ?, ?, ?, ?, ?)""",
+            (title, 0, project_id, _now(), due_date, folder_id)
+        )
+        connection.commit()
+        return cursor.lastrowid
+    finally:
+        connection.close()
+
+
+def update_task(task_id, **fields):
+    """
+    Updates only the fields actually passed in.
+    Pass exactly the fields the caller sent (e.g. via `.model_dump(exclude_unset=True)`)
+    so that an explicit `None` (e.g. clearing project_id) is distinguishable from a
+    field that was never sent at all.
+    """
+    if not fields:
+        return 0
+    if "completed" in fields:
+        completed = fields["completed"]
+        fields["completed"] = int(completed)
+        fields["completed_at"] = _now() if completed else None
+
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT id, project_id, folder_id FROM tasks WHERE id = ?", (task_id,))
+        row = cursor.fetchone()
+        if row is None:
+            return 0
+        stored_project_id, stored_folder_id = row[1], row[2]
+
+        # Determine the effective new project_id and folder_id
+        # If project_id is explicitly provided, use it; otherwise keep stored
+        new_project_id = fields.get("project_id", stored_project_id)
+
+        # If folder_id is explicitly provided (including None), use it
+        # If folder_id is NOT provided but project_id changes, clear folder_id
+        if "folder_id" in fields:
+            new_folder_id = fields["folder_id"]
+        elif "project_id" in fields and fields["project_id"] != stored_project_id:
+            new_folder_id = None
+        else:
+            new_folder_id = stored_folder_id
+
+        if new_project_id is None:
+            new_folder_id = None
+        if new_folder_id is not None:
+            if new_project_id is None:
+                raise ValueError("A task needs a project to be placed in a folder.")
+            cursor.execute("SELECT id, project_id FROM folders WHERE id = ?", (new_folder_id,))
+            folder_row = cursor.fetchone()
+            if folder_row is None:
+                raise ValueError("Folder not found.")
+            if folder_row[1] != new_project_id:
+                raise ValueError("Folder belongs to a different project.")
+        if "project_id" in fields:
+            cursor.execute("SELECT id FROM projects WHERE id = ?", (new_project_id,))
+            if cursor.fetchone() is None:
+                raise ValueError("project_id does not exist")
+
+        # Update the fields dict with the effective folder_id
+        if "folder_id" not in fields and "project_id" in fields and fields["project_id"] != stored_project_id:
+            fields["folder_id"] = None
+
+        set_clause = ", ".join(f"{key} = ?" for key in fields)
+        values = list(fields.values()) + [task_id]
+        cursor.execute(f"UPDATE tasks SET {set_clause} WHERE id = ?", values)
+        connection.commit()
+        return cursor.rowcount
+    except sqlite3.IntegrityError:
+        raise ValueError("project_id does not exist")
+    finally:
+        connection.close()
+
+
+def delete_project(project_id):
+    connection = get_connection()
+    try:
+        cursor = connection.cursor()
+        cursor.execute("SELECT COUNT(*) FROM tasks WHERE project_id = ?", (project_id,))
+        task_count = cursor.fetchone()[0]
+        if task_count > 0:
+            raise sqlite3.IntegrityError("project has tasks")
+        cursor.execute("DELETE FROM folders WHERE project_id = ?", (project_id,))
+        cursor.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        connection.commit()
+        return cursor.rowcount
+    except sqlite3.IntegrityError:
+        raise
     finally:
         connection.close()
