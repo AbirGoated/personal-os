@@ -112,6 +112,8 @@
           <span class="view-count" id="view-count">0 tasks</span>
         </header>
 
+        <nav class="crumbs" id="crumbs" hidden></nav>
+
         <form class="add-task-form" id="add-task-form">
           <input
             type="text"
@@ -129,7 +131,14 @@
             <span class="due-field-label">Due</span>
             <input type="date" id="new-task-due" class="due-field-input" aria-label="Due date (optional)" />
           </label>
+          <button type="button" class="add-btn add-btn-secondary" id="new-folder-btn" aria-label="Create new folder">New folder</button>
           <button type="submit" class="add-btn" aria-label="Add task">Add</button>
+        </form>
+
+        <form class="new-folder-form" id="new-folder-form" hidden>
+          <input type="text" id="new-folder-input" class="new-folder-input" placeholder="Folder name" maxlength="60" enterkeyhint="done" autocomplete="off" />
+          <button type="submit" class="add-btn">Create</button>
+          <button type="button" class="add-btn add-btn-secondary" id="cancel-folder-btn">Cancel</button>
         </form>
 
         <div class="add-existing-wrap" id="add-existing-wrap" hidden>
@@ -137,6 +146,8 @@
             <option value="">Add existing task…</option>
           </select>
         </div>
+
+        <div class="folder-list" id="folder-list"></div>
 
         <div class="task-list" id="task-list">
         </div>
@@ -157,6 +168,7 @@
         <form class="add-project-form" id="add-project-form-page">
           <input
             type="text"
+            id="new-project-input-page"
             class="add-project-input"
             placeholder="Add project"
             autocomplete="off"
@@ -186,6 +198,20 @@
         <span>Projects</span>
       </button>
     </nav>
+
+    <p class="notice" id="notice" hidden role="status" aria-live="polite"></p>
+
+    <div class="modal-backdrop" id="move-picker-backdrop" hidden>
+      <div class="move-picker" id="move-picker" role="dialog" aria-modal="true" aria-labelledby="move-picker-title">
+        <header class="move-picker-header">
+          <h2 id="move-picker-title">Move task</h2>
+          <button type="button" class="move-picker-close" id="move-picker-close" aria-label="Close">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </header>
+        <div class="move-picker-body" id="move-picker-body"></div>
+      </div>
+    </div>
 
   </div>
 

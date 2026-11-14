@@ -9,11 +9,13 @@ const API_BASE = window.location.origin;
 
 let tasks = [];
 let projects = [];
+let folders = [];
 let checklistToday = [];
 let workoutWeek = [];
 let loadedDate = null;
-let currentPage = "home"; 
-let currentView = "all"; 
+let currentPage = "home";
+let currentView = "all";
+let currentFolder = null;
 let formView = null;
 
 const el = {
@@ -25,6 +27,7 @@ const el = {
   newProjectInput: document.getElementById("new-project-input"),
   projectListPage: document.getElementById("project-list-page"),
   addProjectFormPage: document.getElementById("add-project-form-page"),
+  newProjectInputPage: document.getElementById("new-project-input-page"),
   pageProjects: document.getElementById("page-projects"),
   projectsCount: document.getElementById("projects-count"),
   projectsEmptyState: document.getElementById("projects-empty-state"),
@@ -54,8 +57,20 @@ const el = {
   addExistingSelect: document.getElementById("add-existing-select"),
   emptyState: document.getElementById("empty-state"),
   errorBanner: document.getElementById("error-banner"),
-};
 
+  crumbs: document.getElementById("crumbs"),
+  newFolderBtn: document.getElementById("new-folder-btn"),
+  newFolderForm: document.getElementById("new-folder-form"),
+  newFolderInput: document.getElementById("new-folder-input"),
+  cancelFolderBtn: document.getElementById("cancel-folder-btn"),
+  folderList: document.getElementById("folder-list"),
+  notice: document.getElementById("notice"),
+  movePickerBackdrop: document.getElementById("move-picker-backdrop"),
+  movePicker: document.getElementById("move-picker"),
+  movePickerTitle: document.getElementById("move-picker-title"),
+  movePickerBody: document.getElementById("move-picker-body"),
+  movePickerClose: document.getElementById("move-picker-close"),
+};
 
 async function apiRequest(path, options = {}) {
   let response;
@@ -90,10 +105,10 @@ async function apiRequest(path, options = {}) {
 
 const api = {
   getTasks: () => apiRequest("/tasks"),
-  createTask: (title, project_id, due_date) =>
+  createTask: (title, project_id, due_date, folder_id) =>
     apiRequest("/tasks", {
       method: "POST",
-      body: JSON.stringify({ title, project_id, due_date }),
+      body: JSON.stringify({ title, project_id, due_date, folder_id }),
     }),
   updateTask: (id, fields) =>
     apiRequest(`/tasks/${id}`, {
@@ -109,6 +124,19 @@ const api = {
       body: JSON.stringify({ name }),
     }),
   deleteProject: (id) => apiRequest(`/projects/${id}`, { method: "DELETE" }),
+
+  getFolders: () => apiRequest("/folders"),
+  createFolder: (project_id, parent_id, name) =>
+    apiRequest("/folders", {
+      method: "POST",
+      body: JSON.stringify({ project_id, parent_id, name }),
+    }),
+  renameFolder: (id, name) =>
+    apiRequest(`/folders/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({ name }),
+    }),
+  deleteFolder: (id) => apiRequest(`/folders/${id}`, { method: "DELETE" }),
 
   getChecklistToday: (date) => apiRequest(`/checklist/today?date=${date}`),
   createChecklistItem: (title) =>
@@ -141,6 +169,14 @@ function clearError() {
   el.errorBanner.textContent = "";
 }
 
+function showNotice(message) {
+  el.notice.textContent = message;
+  el.notice.hidden = false;
+  setTimeout(() => {
+    el.notice.hidden = true;
+    el.notice.textContent = "";
+  }, 5000);
+}
 
 function getLocalDateString() {
   const now = new Date();
@@ -213,7 +249,6 @@ function createInfoIcon(lines) {
   return wrap;
 }
 
-
 function armDelete(button, onConfirm) {
   const original = button.innerHTML;
   let armed = false;
@@ -249,12 +284,7 @@ function buildProjectItem(project) {
   const btn = document.createElement("button");
   btn.className = "project-item-btn";
   btn.type = "button";
-  btn.addEventListener("click", () => {
-    currentPage = "tasks";
-    currentView = project.id;
-    render();
-    window.scrollTo(0, 0);
-  });
+  btn.addEventListener("click", () => navigate({ page: "tasks", view: project.id, folder: null }));
 
   const name = document.createElement("span");
   name.className = "project-item-name";
@@ -317,6 +347,80 @@ function renderPages() {
   el.pageProjects.hidden = currentPage !== "projects";
 }
 
+function folderById(id) {
+  return folders.find((f) => f.id === id);
+}
+
+function childFolders(projectId, parentId) {
+  return folders
+    .filter((f) => f.project_id === projectId && (f.parent_id ?? null) === (parentId ?? null))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+}
+
+function folderChain(folderId) {
+  const chain = [];
+  let current = folderById(folderId);
+  while (current) {
+    chain.unshift(current);
+    current = folderById(current.parent_id);
+  }
+  return chain;
+}
+
+function folderPathText(folderId) {
+  if (folderId === null) return "";
+  const chain = folderChain(folderId);
+  return chain.map((f) => f.name).join(" › ");
+}
+
+function subtreeStats(folderId) {
+  let unfinished = 0;
+  let total = 0;
+  const countInFolder = (fid) => {
+    tasks.forEach((t) => {
+      if ((t.folder_id ?? null) === fid) {
+        total++;
+        if (!t.completed) unfinished++;
+      }
+    });
+    childFolders(currentView, fid).forEach((f) => countInFolder(f.id));
+  };
+  countInFolder(folderId);
+  return { unfinished, total };
+}
+
+function validateState() {
+  if (currentFolder !== null) {
+    const folder = folderById(currentFolder);
+    if (!folder || folder.project_id !== currentView) {
+      currentFolder = null;
+    }
+  }
+}
+
+function navigate(next) {
+  if (
+    next.page === currentPage &&
+    next.view === currentView &&
+    next.folder === currentFolder
+  ) return;
+  history.pushState(next, "");
+  currentPage = next.page;
+  currentView = next.view;
+  currentFolder = next.folder;
+  render();
+  window.scrollTo(0, 0);
+}
+
+window.addEventListener("popstate", (event) => {
+  const state = event.state ?? { page: "home", view: "all", folder: null };
+  currentPage = state.page;
+  currentView = state.view;
+  currentFolder = state.folder;
+  render();
+  window.scrollTo(0, 0);
+});
+
 function renderHome() {
   el.homeDate.textContent = formatTodayHeading();
 
@@ -365,6 +469,78 @@ const CROSS_SVG =
   '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">' +
   '<path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' +
   "</svg>";
+
+const FOLDER_SVG =
+  '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>' +
+  "</svg>";
+
+const CHEVRON_SVG =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>';
+
+const PENCIL_SVG =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
+
+const FOLDER_ARROW_SVG =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 10v10M12 10l-6 6M12 10l6 6"/></svg>';
+
+const ARROW_LEFT_SVG =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>';
+
+const CHECK_ICON_SVG =
+  '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+  '<path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' +
+  "</svg>";
+
+function renderScheduled() {
+  const scheduled = getScheduledTasks();
+  const previousScroll = el.scheduledList.scrollTop;
+
+  el.scheduledList.innerHTML = "";
+  el.scheduledEmptyState.hidden = scheduled.length !== 0;
+
+  scheduled.forEach((task) => {
+    const days = daysUntil(task.due_date);
+    const row = document.createElement("div");
+    row.className =
+      "scheduled-row" + urgencyClass(days) + (task.completed ? " is-completed" : "");
+
+    const checkbox = document.createElement("button");
+    checkbox.className = "task-checkbox";
+    checkbox.type = "button";
+    checkbox.setAttribute("aria-label", `Mark "${task.title}" complete`);
+    const mark = document.createElement("span");
+    mark.className = "task-checkbox-mark";
+    checkbox.appendChild(mark);
+    checkbox.addEventListener("click", () => handleToggleComplete(task));
+
+    const body = document.createElement("div");
+    body.className = "scheduled-body";
+    const title = document.createElement("span");
+    title.className = "scheduled-title";
+    title.textContent = task.title;
+
+    let projectText = task.project_name || "No project";
+    if (task.folder_id) {
+      const folderPath = folderPathText(task.folder_id);
+      if (folderPath) projectText = `${projectText} › ${folderPath}`;
+    }
+    const project = document.createElement("span");
+    project.className = "scheduled-project";
+    project.textContent = projectText;
+    body.append(title, project);
+
+    const due = document.createElement("span");
+    due.className = "scheduled-due";
+    due.textContent = dueLabel(days);
+
+    row.append(checkbox, body, due);
+    el.scheduledList.appendChild(row);
+  });
+
+  el.scheduledList.scrollTop = previousScroll;
+  updateScheduledScrollHint();
+}
 
 function renderWeek() {
   const todayStr = getLocalDateString();
@@ -490,7 +666,7 @@ function sortTasks(list) {
 
 function getVisibleTasks() {
   if (currentView === "all") return tasks;
-  return tasks.filter((t) => t.project_id === currentView);
+  return tasks.filter((t) => t.project_id === currentView && (t.folder_id ?? null) === (currentFolder ?? null));
 }
 
 function getScheduledTasks() {
@@ -505,48 +681,198 @@ function updateScheduledScrollHint() {
   list.classList.toggle("can-scroll-down", hiddenBelow > 4);
 }
 
-function renderScheduled() {
-  const scheduled = getScheduledTasks();
-  const previousScroll = el.scheduledList.scrollTop;
+function renderBreadcrumbs() {
+  if (currentView === "all") {
+    el.crumbs.hidden = true;
+    return;
+  }
+  el.crumbs.hidden = false;
 
-  el.scheduledList.innerHTML = "";
-  el.scheduledEmptyState.hidden = scheduled.length !== 0;
+  const project = projects.find((p) => p.id === currentView);
+  if (!project) {
+    el.crumbs.hidden = true;
+    return;
+  }
 
-  scheduled.forEach((task) => {
-    const days = daysUntil(task.due_date);
-    const row = document.createElement("div");
-    row.className =
-      "scheduled-row" + urgencyClass(days) + (task.completed ? " is-completed" : "");
+  el.crumbs.innerHTML = "";
 
-    const checkbox = document.createElement("button");
-    checkbox.className = "task-checkbox";
-    checkbox.type = "button";
-    checkbox.setAttribute("aria-label", `Mark "${task.title}" complete`);
-    const mark = document.createElement("span");
-    mark.className = "task-checkbox-mark";
-    checkbox.appendChild(mark);
-    checkbox.addEventListener("click", () => handleToggleComplete(task));
+  const upBtn = document.createElement("button");
+  upBtn.id = "crumb-up";
+  upBtn.type = "button";
+  upBtn.className = "crumb-up";
+  upBtn.setAttribute("aria-label", "Up");
+  upBtn.innerHTML = ARROW_LEFT_SVG;
+  upBtn.addEventListener("click", () => {
+    if (currentFolder !== null) {
+      const folder = folderById(currentFolder);
+      navigate({ page: "tasks", view: currentView, folder: folder?.parent_id ?? null });
+    } else {
+      navigate({ page: "projects", view: "all", folder: null });
+    }
+  });
+  if (currentFolder === null) {
+    upBtn.hidden = true;
+  }
+  el.crumbs.appendChild(upBtn);
 
-    const body = document.createElement("div");
-    body.className = "scheduled-body";
-    const title = document.createElement("span");
-    title.className = "scheduled-title";
-    title.textContent = task.title;
-    const project = document.createElement("span");
-    project.className = "scheduled-project";
-    project.textContent = task.project_name || "No project";
-    body.append(title, project);
+  const addCrumb = (text, onClick, isCurrent = false) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "crumb" + (isCurrent ? " is-current" : "");
+    btn.textContent = text;
+    if (!isCurrent) {
+      btn.addEventListener("click", onClick);
+    }
+    el.crumbs.appendChild(btn);
+  };
 
-    const due = document.createElement("span");
-    due.className = "scheduled-due";
-    due.textContent = dueLabel(days);
+  addCrumb("Projects", () => navigate({ page: "projects", view: "all", folder: null }));
+  addCrumb(project.name, () => navigate({ page: "tasks", view: currentView, folder: null }));
 
-    row.append(checkbox, body, due);
-    el.scheduledList.appendChild(row);
+  const chain = folderChain(currentFolder);
+  chain.forEach((folder) => {
+    addCrumb(folder.name, () => navigate({ page: "tasks", view: currentView, folder: folder.id }));
   });
 
-  el.scheduledList.scrollTop = previousScroll;
-  updateScheduledScrollHint();
+  if (!currentFolder) {
+    const currentCrumb = el.crumbs.querySelector(".crumb:last-child");
+    if (currentCrumb) currentCrumb.classList.add("is-current");
+  }
+
+  requestAnimationFrame(() => {
+    el.crumbs.scrollLeft = el.crumbs.scrollWidth;
+  });
+}
+
+function renderFolders() {
+  el.folderList.innerHTML = "";
+
+  if (currentView === "all") return;
+
+  const childs = childFolders(currentView, currentFolder);
+
+  childs.forEach((folder) => {
+    const stats = subtreeStats(folder.id);
+    const row = document.createElement("div");
+    row.className = "folder-row";
+
+    const openBtn = document.createElement("button");
+    openBtn.type = "button";
+    openBtn.className = "folder-open";
+    openBtn.addEventListener("click", () => navigate({ page: "tasks", view: currentView, folder: folder.id }));
+
+    const icon = document.createElement("span");
+    icon.className = "folder-icon";
+    icon.innerHTML = FOLDER_SVG;
+
+    const name = document.createElement("span");
+    name.className = "folder-name";
+    name.textContent = folder.name;
+
+    const meta = document.createElement("span");
+    meta.className = "folder-meta";
+    if (stats.total === 0) {
+      meta.textContent = "Empty";
+    } else if (stats.unfinished === 0) {
+      meta.textContent = "All done";
+    } else {
+      meta.textContent = `${stats.unfinished} unfinished`;
+    }
+
+    const chevron = document.createElement("span");
+    chevron.className = "folder-chevron";
+    chevron.innerHTML = CHEVRON_SVG;
+
+    openBtn.append(icon, name, meta, chevron);
+
+    const actions = document.createElement("span");
+    actions.className = "folder-actions";
+
+    const renameBtn = document.createElement("button");
+    renameBtn.type = "button";
+    renameBtn.className = "folder-rename";
+    renameBtn.setAttribute("aria-label", `Rename ${folder.name}`);
+    renameBtn.innerHTML = PENCIL_SVG;
+    renameBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      startRenameFolder(folder, row, name);
+    });
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "folder-delete";
+    deleteBtn.setAttribute("aria-label", `Delete ${folder.name}`);
+    deleteBtn.innerHTML = "&times;";
+    armDelete(deleteBtn, () => handleDeleteFolder(folder.id));
+
+    actions.append(renameBtn, deleteBtn);
+    row.append(openBtn, actions);
+    el.folderList.appendChild(row);
+  });
+}
+
+function startRenameFolder(folder, row, nameEl) {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "folder-rename-input";
+  input.value = folder.name;
+  input.maxLength = 60;
+
+  let cancelled = false;
+
+  const save = async () => {
+    if (cancelled) return;
+    cancelled = true;
+    const newName = input.value.trim();
+    if (!newName || newName === folder.name) {
+      cancel();
+      return;
+    }
+    try {
+      await api.renameFolder(folder.id, newName);
+      folders = await api.getFolders();
+      clearError();
+      render();
+    } catch (err) {
+      showError(err.message);
+      cancel();
+    }
+  };
+
+  const cancel = () => {
+    if (cancelled) return;
+    cancelled = true;
+    nameEl.textContent = folder.name;
+    const openBtn = row.querySelector(".folder-open");
+    if (openBtn && input.parentNode === openBtn) {
+      openBtn.replaceChild(nameEl, input);
+    }
+    input.removeEventListener("keydown", onKeydown);
+    input.removeEventListener("blur", onBlur);
+  };
+
+  const onKeydown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      save();
+    } else if (e.key === "Escape") {
+      cancel();
+    }
+  };
+
+  const onBlur = () => {
+    save();
+  };
+
+  input.addEventListener("keydown", onKeydown);
+  input.addEventListener("blur", onBlur);
+
+  const openBtn = row.querySelector(".folder-open");
+  if (openBtn) {
+    openBtn.replaceChild(input, nameEl);
+  }
+  input.focus();
+  input.select();
 }
 
 function renderTasks() {
@@ -554,17 +880,46 @@ function renderTasks() {
 
   if (currentView === "all") {
     el.viewTitle.textContent = "All tasks";
-  } else {
+  } else if (currentFolder === null) {
     const project = projects.find((p) => p.id === currentView);
     el.viewTitle.textContent = project ? project.name : "Project";
+  } else {
+    const folder = folderById(currentFolder);
+    el.viewTitle.textContent = folder ? folder.name : "Folder";
   }
-  el.newTaskInput.placeholder =
-    currentView === "all" ? "Add a task…" : `Add a task to ${el.viewTitle.textContent}…`;
+
+  if (currentView === "all") {
+    el.newTaskInput.placeholder = "Add a task…";
+  } else if (currentFolder === null) {
+    el.newTaskInput.placeholder = `Add a task to ${el.viewTitle.textContent}…`;
+  } else {
+    const path = folderPathText(currentFolder);
+    const project = projects.find((p) => p.id === currentView);
+    el.newTaskInput.placeholder = `Add a task to ${project?.name} › ${path}…`;
+  }
+
   const finished = visible.filter((t) => t.completed).length;
   el.viewCount.textContent = `${visible.length - finished} unfinished · ${finished} finished`;
 
+  el.newFolderBtn.hidden = currentView === "all";
+  el.newFolderForm.hidden = true;
+
   el.taskList.innerHTML = "";
-  el.emptyState.hidden = visible.length !== 0;
+  el.emptyState.hidden = true;
+  el.addExistingWrap.hidden = true;
+
+  if (currentView !== "all") {
+    if (childFolders(currentView, currentFolder).length === 0 && visible.length === 0) {
+      el.emptyState.hidden = false;
+      el.emptyState.textContent = "Nothing here yet. Add a task or create a folder.";
+    }
+    renderAddExisting();
+  } else {
+    if (visible.length === 0) {
+      el.emptyState.hidden = false;
+      el.emptyState.textContent = "Nothing here yet. Add a task above to get started.";
+    }
+  }
 
   visible.forEach((task) => {
     const row = document.createElement("div");
@@ -585,10 +940,15 @@ function renderTasks() {
 
     row.append(checkbox, title);
 
-    const infoIcon = createInfoIcon([
+    const infoLines = [
       `Created ${formatCreatedAt(task.created_at)}`,
       task.completed ? `Completed ${formatCreatedAt(task.completed_at)}` : "Incomplete",
-    ]);
+    ];
+    if (task.folder_id && currentView !== "all") {
+      const path = folderPathText(task.folder_id);
+      if (path) infoLines.push(path);
+    }
+    const infoIcon = createInfoIcon(infoLines);
     row.appendChild(infoIcon);
 
     const projectSelect = document.createElement("select");
@@ -634,9 +994,23 @@ function renderTasks() {
     dueInput.addEventListener("change", () => handleSetDueDate(task, dueInput.value));
     dueChip.append(dueText, dueInput);
 
+    const moveBtn = document.createElement("button");
+    moveBtn.type = "button";
+    moveBtn.className = "task-move";
+    moveBtn.setAttribute("aria-label", `Move "${task.title}" to folder`);
+    moveBtn.innerHTML = FOLDER_ARROW_SVG;
+    if (task.project_id) {
+      moveBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openMovePicker(task);
+      });
+    } else {
+      moveBtn.style.visibility = "hidden";
+    }
+
     const meta = document.createElement("div");
     meta.className = "task-meta";
-    meta.append(projectSelect, dueChip);
+    meta.append(projectSelect, dueChip, moveBtn);
     row.appendChild(meta);
 
     const deleteBtn = document.createElement("button");
@@ -686,10 +1060,13 @@ function syncAddTaskProject() {
 }
 
 function render() {
+  validateState();
   syncAddTaskProject();
   renderPages();
   renderSidebar();
   renderHome();
+  renderBreadcrumbs();
+  renderFolders();
   renderTasks();
   renderAddExisting();
 }
@@ -697,14 +1074,16 @@ function render() {
 async function loadAll() {
   try {
     const today = getLocalDateString();
-    const [taskData, projectData, checklistData, weekData] = await Promise.all([
+    const [taskData, projectData, folderData, checklistData, weekData] = await Promise.all([
       api.getTasks(),
       api.getProjects(),
+      api.getFolders().catch(() => []),
       api.getChecklistToday(today),
       api.getWorkoutWeek(today),
     ]);
     tasks = taskData;
     projects = projectData;
+    folders = folderData;
     checklistToday = checklistData;
     workoutWeek = weekData;
     loadedDate = today;
@@ -723,9 +1102,10 @@ async function handleAddTask(e) {
   const projectValue = el.newTaskProject.value;
   const project_id = projectValue ? Number(projectValue) : null;
   const due_date = el.newTaskDue.value || null;
+  const folder_id = project_id === currentView ? (currentFolder ?? null) : null;
 
   try {
-    const created = await api.createTask(title, project_id, due_date);
+    const created = await api.createTask(title, project_id, due_date, folder_id);
     tasks.unshift(created);
     el.newTaskInput.value = "";
     el.newTaskDue.value = "";
@@ -776,7 +1156,9 @@ async function handleSetDueDate(task, value) {
 
 async function handleReassignTask(id, project_id) {
   try {
-    const updated = await api.updateTask(id, { project_id });
+    const task = tasks.find((t) => t.id === id);
+    const folder_id = project_id === currentView ? (currentFolder ?? null) : null;
+    const updated = await api.updateTask(id, { project_id, folder_id });
     tasks = tasks.map((t) => (t.id === id ? updated : t));
     await refreshProjectCounts();
     clearError();
@@ -801,7 +1183,8 @@ async function handleDeleteTask(id) {
 
 async function handleAddProject(e) {
   e.preventDefault();
-  const input = e.currentTarget.querySelector("input");
+  const form = e.currentTarget;
+  const input = form.id === "add-project-form-page" ? el.newProjectInputPage : el.newProjectInput;
   const name = input.value.trim();
   if (!name) return;
 
@@ -820,7 +1203,9 @@ async function handleDeleteProject(id) {
   try {
     await api.deleteProject(id);
     projects = projects.filter((p) => p.id !== id);
-    if (currentView === id) currentView = "all";
+    if (currentView === id) {
+      navigate({ page: "tasks", view: "all", folder: null });
+    }
     clearError();
     render();
   } catch (err) {
@@ -832,7 +1217,6 @@ async function refreshProjectCounts() {
   try {
     projects = await api.getProjects();
   } catch (err) {
-    /* non-fatal */
   }
 }
 
@@ -895,16 +1279,144 @@ async function handleWorkoutAction(entry, action) {
   }
 }
 
-el.navHome.addEventListener("click", () => {
-  currentPage = "home";
-  render();
+el.newFolderBtn.addEventListener("click", () => {
+  el.newFolderForm.hidden = false;
+  el.newFolderInput.value = "";
+  el.newFolderInput.focus();
 });
 
-el.navTasks.addEventListener("click", () => {
-  currentPage = "tasks";
-  currentView = "all";
-  render();
+el.cancelFolderBtn.addEventListener("click", () => {
+  el.newFolderForm.hidden = true;
 });
+
+el.newFolderForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = el.newFolderInput.value.trim();
+  if (!name) return;
+
+  try {
+    const created = await api.createFolder(currentView, currentFolder, name);
+    folders.push(created);
+    el.newFolderForm.hidden = true;
+    clearError();
+    render();
+  } catch (err) {
+    showError(err.message);
+  }
+});
+
+async function handleDeleteFolder(id) {
+  try {
+    const folder = folderById(id);
+    const destName = folder?.parent_id ? folderById(folder.parent_id)?.name : (projects.find((p) => p.id === currentView)?.name ?? "Project");
+    const result = await api.deleteFolder(id);
+    folders = await api.getFolders();
+    tasks = await api.getTasks();
+    await refreshProjectCounts();
+    showNotice(`Folder deleted. ${result.moved_tasks} task${result.moved_tasks === 1 ? "" : "s"} and ${result.moved_folders} folder${result.moved_folders === 1 ? "" : "s"} moved to ${destName}.`);
+    clearError();
+    render();
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+let movePickerTaskId = null;
+
+function openMovePicker(task) {
+  movePickerTaskId = task.id;
+  el.movePickerTitle.textContent = `Move "${task.title}"`;
+  el.movePickerBody.innerHTML = "";
+
+  const project = projects.find((p) => p.id === currentView);
+  if (!project) return;
+
+  const addRow = (text, folderId, isCurrent = false, depth = 0) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "picker-row" + (isCurrent ? " is-current" : "");
+    row.style.paddingLeft = `${16 + depth * 18}px`;
+
+    if (folderId === null) {
+      row.innerHTML = `<span class="picker-icon">${FOLDER_SVG}</span> <span>${text}</span>`;
+    } else {
+      row.innerHTML = `<span class="picker-icon">${FOLDER_SVG}</span> <span>${text}</span>`;
+    }
+
+    if (isCurrent) {
+      const check = document.createElement("span");
+      check.className = "picker-check";
+      check.innerHTML = CHECK_ICON_SVG;
+      row.appendChild(check);
+    }
+
+    row.addEventListener("click", () => {
+      if (folderId === (task.folder_id ?? null)) {
+        closeMovePicker();
+        return;
+      }
+      handleMoveTask(task.id, folderId);
+      closeMovePicker();
+    });
+
+    el.movePickerBody.appendChild(row);
+  };
+
+  addRow(`<strong>${project.name}</strong>`, null, (task.folder_id ?? null) === null, 0);
+
+  function addFolderTree(parentId, depth) {
+    const childs = childFolders(currentView, parentId);
+    childs.forEach((folder) => {
+      const isCurrent = folder.id === (task.folder_id ?? null);
+      addRow(folder.name, folder.id, isCurrent, depth + 1);
+      addFolderTree(folder.id, depth + 1);
+    });
+  }
+
+  addFolderTree(null, 0);
+
+  if (childFolders(currentView, null).length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "picker-empty";
+    empty.textContent = "No folders yet.";
+    el.movePickerBody.appendChild(empty);
+  }
+
+  el.movePickerBackdrop.hidden = false;
+  document.body.style.overflow = "hidden";
+}
+
+function closeMovePicker() {
+  el.movePickerBackdrop.hidden = true;
+  document.body.style.overflow = "";
+  movePickerTaskId = null;
+}
+
+async function handleMoveTask(taskId, folderId) {
+  try {
+    const updated = await api.updateTask(taskId, { folder_id: folderId });
+    tasks = tasks.map((t) => (t.id === taskId ? updated : t));
+    clearError();
+    render();
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+el.movePickerClose.addEventListener("click", closeMovePicker);
+el.movePickerBackdrop.addEventListener("click", (e) => {
+  if (e.target === el.movePickerBackdrop) closeMovePicker();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !el.movePickerBackdrop.hidden) {
+    closeMovePicker();
+  }
+});
+
+el.navHome.addEventListener("click", () => navigate({ page: "home", view: "all", folder: null }));
+
+el.navTasks.addEventListener("click", () => navigate({ page: "tasks", view: "all", folder: null }));
 
 el.addTaskForm.addEventListener("submit", handleAddTask);
 el.addProjectForm.addEventListener("submit", handleAddProject);
@@ -914,9 +1426,9 @@ el.addChecklistForm.addEventListener("submit", handleAddChecklistItem);
 el.tabbarItems.forEach((item) => {
   item.addEventListener("click", () => {
     const tab = item.dataset.tab;
-    currentPage = tab;
-    if (tab === "tasks") currentView = "all";
-    render();
+    if (tab === "home") navigate({ page: "home", view: "all", folder: null });
+    else if (tab === "tasks") navigate({ page: "tasks", view: "all", folder: null });
+    else if (tab === "projects") navigate({ page: "projects", view: "all", folder: null });
     window.scrollTo(0, 0);
   });
 });
@@ -935,6 +1447,8 @@ document.addEventListener("visibilitychange", () => {
     loadAll();
   }
 });
+
+history.replaceState({ page: "home", view: "all", folder: null }, "");
 
 loadAll();
 
