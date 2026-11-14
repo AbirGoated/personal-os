@@ -890,19 +890,17 @@ ul {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
-  z-index: 100;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding: 16px;
+  z-index: 1000;
   opacity: 0;
   visibility: hidden;
   transition: opacity 150ms ease, visibility 150ms ease;
+  pointer-events: none;
 }
 
 .move-picker-backdrop:not([hidden]) {
   opacity: 1;
   visibility: visible;
+  pointer-events: auto;
 }
 
 .move-picker {
@@ -917,6 +915,7 @@ ul {
   flex-direction: column;
   transform: translateY(20px);
   transition: transform 150ms ease;
+  z-index: 1001;
 }
 
 .move-picker-backdrop:not([hidden]) .move-picker {
@@ -1727,14 +1726,15 @@ ul {
 
   .task-row {
     display: grid;
-    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-columns: 44px minmax(0, 1fr) auto auto;
     grid-template-areas:
-      "check title del"
-      ". meta info";
+      "check title del move"
+      ". meta meta info";
     align-items: center;
     column-gap: 4px;
     row-gap: 0;
-    padding: 4px 0 6px;
+    padding: 8px 0 10px;
+    min-height: 56px;
   }
 
   .task-row .task-checkbox {
@@ -1754,6 +1754,13 @@ ul {
   .task-row .task-delete {
     grid-area: del;
     justify-self: end;
+  }
+
+  .task-row .task-move {
+    grid-area: move;
+    justify-self: end;
+    width: 44px;
+    height: 44px;
   }
 
   .task-row .task-meta {
@@ -1843,7 +1850,7 @@ ul {
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 40;
+    z-index: 20;
     display: flex;
     background: var(--surface);
     border-top: 1px solid var(--border);
